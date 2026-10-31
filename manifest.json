@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "My Screenshot Cropper",
-  "version": "1.17.3",
+  "version": "1.17.4",
   "description": "截圖、圖片偵測、自動捲動與長圖拼接。",
   "minimum_chrome_version": "116",
   "icons": {
@@ -53,7 +53,7 @@
     },
     "capture-pages": {
       "suggested_key": {
-        "default": "Alt+Shift+N"
+        "default": "Alt+Shift+K"
       },
       "description": "翻頁截圖（自動按「→」鍵逐頁擷取）"
     }
