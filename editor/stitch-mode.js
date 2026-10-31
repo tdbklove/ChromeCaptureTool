@@ -30,9 +30,6 @@ const MAX_PART_PX = 10000;
 const MAX_STITCH_HEIGHT = 30000;
 const MAX_STITCH_AREA = 120_000_000;
 
-// 側邊空白至少要這麼寬（截圖像素）才預設移除，避免把正常的內距當成空白。
-const MIN_SIDE_PX = 8;
-
 const MIN_CUT_PX = 4;
 const HANDLE_CSS_PX = 14;
 
@@ -190,11 +187,12 @@ export function protectImages(detected, pxPerCssX) {
   };
 }
 
+// 偵測到的左右空白預設移除（與其他移除區域一樣預設全選）。
 export function initSides(detected) {
   state.sides = {
     detected,
-    left: { width: detected.left, removed: detected.left >= MIN_SIDE_PX },
-    right: { width: detected.right, removed: detected.right >= MIN_SIDE_PX }
+    left: { width: detected.left, removed: detected.left > 0 },
+    right: { width: detected.right, removed: detected.right > 0 }
   };
 }
 
@@ -243,7 +241,7 @@ export function recomputeStitch() {
   state.stitchInfo.separatorCount = plan.separatorCount;
 }
 
-// 自動偵測的預設移除區域：圖片之間偵測到廣告的間隔。
+// 自動偵測的預設移除區域：所有間隔與頂部、底部區域（預設全選）。
 export function defaultRemovedGapIds() {
   const initial = computeStitchGroups({
     ...state.stitchLayout,
@@ -352,8 +350,11 @@ export function drawStitchOverlay(ctx) {
     ctx.lineWidth = Math.max(2, Math.round(2 * ratio));
 
     for (const y of [startY, endY]) {
-      ctx.fillRect(x, y - barThickness / 2, barLength, barThickness);
-      ctx.strokeRect(x, y - barThickness / 2, barLength, barThickness);
+      // 位於長圖最上緣或最下緣的邊線（頂部、底部區域），拉條往內移，才不會有一半被切掉。
+      const barY = clamp(y - barThickness / 2, 0, state.height - barThickness);
+
+      ctx.fillRect(x, barY, barLength, barThickness);
+      ctx.strokeRect(x, barY, barLength, barThickness);
     }
 
     ctx.restore();
