@@ -96,7 +96,7 @@ stitchButton.addEventListener("click", async () => {
 // 翻頁截圖：在背景程式中逐頁擷取，完成後開啟編輯頁。
 pagesButton.addEventListener("click", async () => {
   setRunning(true);
-  setStatus("正在尋找彈窗中的圖片……");
+  setStatus("正在尋找畫面中的主要圖片……");
 
   try {
     const tab = await getActiveTab();

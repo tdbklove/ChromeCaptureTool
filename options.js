@@ -24,7 +24,7 @@ const COMMAND_LABELS = {
   _execute_action: "開啟截圖選單",
   "capture-visible": "擷取目前畫面",
   "capture-full": "自動捲動並拼接長圖",
-  "capture-pages": "翻頁截圖（彈窗看圖）"
+  "capture-pages": "翻頁截圖"
 };
 
 let statusTimer = null;

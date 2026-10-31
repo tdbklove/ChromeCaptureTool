@@ -301,10 +301,10 @@ async function openCaptureEditor(tab, id) {
   await chrome.storage.local.set({ [STORAGE_KEYS.captureTabs]: captureTabs });
 }
 
-// ---- 翻頁截圖（彈窗看圖） ----
+// ---- 翻頁截圖 ----
 //
-// 適用於點開圖片後以彈窗顯示、要按「→」鍵切換下一張的網頁：
-// 擷取彈窗中的主圖 → 模擬按下「→」鍵 → 等待換成下一張 → 重複，每頁輸出一張圖片。
+// 適用於按「→」鍵可以切換下一張圖片的網頁（看圖彈窗、相簿、漫畫閱讀器等）：
+// 擷取畫面中的主圖 → 模擬按下「→」鍵 → 等待換成下一張 → 重複，每頁輸出一張圖片。
 
 // 單次最多擷取的頁數，以及所有頁面合計的最大高度（裝置像素，編輯頁的畫布上限）。
 const MAX_PAGES = 60;
@@ -427,7 +427,7 @@ async function capturePages(tab) {
     let main = first.main;
 
     if (!main) {
-      throw new Error("畫面中找不到圖片。請先點開要擷取的圖片彈窗，再開始翻頁截圖。");
+      throw new Error("畫面中找不到圖片。如果圖片要點開彈窗才會顯示，請先點開彈窗再開始翻頁截圖。");
     }
 
     const pages = [];

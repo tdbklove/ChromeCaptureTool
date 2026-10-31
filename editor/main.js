@@ -228,7 +228,7 @@ async function loadPages(capture) {
   let text = `已擷取 ${items.length} 頁。${PAGE_END_MESSAGES[capture.endReason] || ""}`;
 
   if (items.length === 1 && capture.endReason === "no-change") {
-    text += "如果彈窗其實還有下一張，表示這個網站不支援用「→」鍵翻頁。";
+    text += "如果其實還有下一張，表示這個網站不支援用「→」鍵翻頁。";
   }
 
   setStatus(text);
