@@ -53,6 +53,7 @@ function applyMode() {
 
   dom.imageBatchControls.hidden = stitch;
   dom.stitchBatchControls.hidden = !stitch;
+  dom.stitchDownloadControls.hidden = !stitch;
   dom.sessionControls.hidden = !stitch;
 
   // 預覽區的說明：只描述目前模式中實際會出現的顏色與操作。

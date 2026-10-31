@@ -728,6 +728,7 @@ export async function renderStitchGroups() {
   revokePreviewUrls();
   dom.resultsContainer.replaceChildren();
   renderCutList();
+  renderPartList();
 
   if (state.stitchParts.length === 0) {
     const message = document.createElement("p");
@@ -769,14 +770,7 @@ export async function renderStitchGroups() {
     const mergeLabel = document.createElement("label");
     mergeLabel.className = "selectRow";
 
-    const mergeCheckbox = document.createElement("input");
-    mergeCheckbox.type = "checkbox";
-    mergeCheckbox.checked = isPartIncluded(part);
-
-    mergeCheckbox.addEventListener("change", () => {
-      setPartIncluded(part, mergeCheckbox.checked);
-      refreshStitchControls();
-    });
+    const mergeCheckbox = createPartCheckbox(part, index);
 
     mergeLabel.append(mergeCheckbox, " 加入合併");
     card.appendChild(mergeLabel);
@@ -846,17 +840,59 @@ function setPartIncluded(part, included) {
   }
 }
 
+// 同一段落在上方清單與卡片上各有一個勾選框，任一個改變時同步另一個。
+function syncPartCheckboxes() {
+  document.querySelectorAll("input[data-part-index]").forEach((checkbox) => {
+    const part = state.stitchParts[Number(checkbox.dataset.partIndex)];
+    checkbox.checked = Boolean(part) && isPartIncluded(part);
+  });
+}
+
+function createPartCheckbox(part, index) {
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.dataset.partIndex = String(index);
+  checkbox.checked = isPartIncluded(part);
+
+  checkbox.addEventListener("change", () => {
+    setPartIncluded(part, checkbox.checked);
+    syncPartCheckboxes();
+    refreshStitchControls();
+  });
+
+  return checkbox;
+}
+
+// 上方「下載長圖」區的段落清單，方便快速勾選要合併的段落。
+function renderPartList() {
+  dom.partListContainer.replaceChildren();
+
+  if (state.stitchParts.length === 0) return;
+
+  const panel = document.createElement("div");
+  panel.className = "gapPanel";
+
+  state.stitchParts.forEach((part, index) => {
+    const rect = partRect(part);
+    const row = document.createElement("label");
+    row.className = "selectRow";
+    row.title = "勾選＝加入合併";
+    row.append(
+      createPartCheckbox(part, index),
+      ` 第 ${index + 1} 段（${rect.width} × ${rect.height}px）`
+    );
+    panel.appendChild(row);
+  });
+
+  dom.partListContainer.appendChild(panel);
+}
+
 function setAllPartsIncluded(included) {
   state.excludedPartRanges = included
     ? []
     : state.stitchParts.map((part) => ({ startY: part.startY, endY: part.endY }));
 
-  dom.resultsContainer
-    .querySelectorAll(".resultCard input[type='checkbox']")
-    .forEach((checkbox) => {
-      checkbox.checked = included;
-    });
-
+  syncPartCheckboxes();
   refreshStitchControls();
 }
 
@@ -1027,7 +1063,7 @@ export function initStitchMode(refreshControls) {
   dom.continueButton.addEventListener("click", async () => {
     state.busy = true;
     refreshControls();
-    setStatus("正在切回目標頁面，繼續截圖中，請勿操作目標分頁……");
+    setStatus("正在切回目標頁面，繼續截圖中，請勿切換分頁或操作目標網頁……");
 
     try {
       const response = await chrome.runtime.sendMessage({

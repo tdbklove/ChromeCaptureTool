@@ -93,7 +93,10 @@
         </p>
 
         <div id="cutList" class="cutList"></div>
+      </div>
 
+      <!-- 長條截圖：下載與合併 -->
+      <div id="stitchDownloadControls" class="controlGroup" hidden>
         <span class="groupTitle">下載長圖</span>
         <div class="groupButtons">
           <button id="downloadAllGroupsButton" type="button" class="primary" disabled
@@ -108,8 +111,10 @@
             title="所有段落都不加入合併">取消全選段落</button>
         </div>
         <p class="groupHint">
-          在下方每一段勾選「加入合併」，即可只把需要的段落合併成一張長圖。
+          勾選要合併的段落（也可以在下方每一段的卡片上勾選「加入合併」），再按「合併勾選的段落」，即可只把需要的段落合併成一張長圖。
         </p>
+
+        <div id="partList" class="cutList"></div>
       </div>
 
       <!-- 長條截圖：分批擷取的下一批 -->
@@ -121,6 +126,9 @@
           <button id="finishButton" type="button" class="text" disabled
             title="結束本次長條截圖，並刪除暫存的截圖資料">結束並清除暫存</button>
         </div>
+        <p class="groupHint warningHint">
+          繼續截圖時會自動切回原網頁。截圖完成前請勿切換分頁、捲動或操作網頁，切換分頁時會自動停止。
+        </p>
       </div>
 
       <div id="results" class="results">

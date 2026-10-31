@@ -184,6 +184,16 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.warning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b06000;
+  background: #fef7e0;
+  border-radius: 8px;
+}
+
 .hint {
   margin: 12px 0 0;
   font-size: 12px;

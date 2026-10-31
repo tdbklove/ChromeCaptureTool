@@ -98,6 +98,13 @@ chrome.commands.getAll().then((commands) => {
   let missing = false;
 
   for (const command of commands) {
+    // 開啟本選單的快捷鍵沒有對應的按鈕，顯示在下方提示中。
+    if (command.name === "_execute_action" && command.shortcut) {
+      const menuShortcut = document.querySelector("#menuShortcut");
+      menuShortcut.textContent = `開啟此選單的快捷鍵：${command.shortcut}`;
+      menuShortcut.hidden = false;
+    }
+
     const button = labels[command.name];
 
     if (!button) continue;

@@ -655,3 +655,27 @@ button {
   padding: 9px 12px;
   border-radius: 0.25rem;
 }
+
+/* 需要使用者特別注意的提示（例如截圖時不可切換分頁） */
+.groupHint.warningHint {
+  color: var(--warning-text);
+}
+
+/* 長條截圖的三個操作區（移除區域、下載長圖、分批截圖）作用不同，各自以外框分開 */
+#stitchBatchControls,
+#stitchDownloadControls,
+#sessionControls {
+  margin: 12px 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+#stitchDownloadControls {
+  background: var(--surface-2);
+}
+
+#sessionControls {
+  margin-bottom: 4px;
+}

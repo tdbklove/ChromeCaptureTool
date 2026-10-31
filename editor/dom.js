@@ -27,7 +27,9 @@ export const dom = {
 
   // 長條截圖
   stitchBatchControls: $("#stitchBatchControls"),
+  stitchDownloadControls: $("#stitchDownloadControls"),
   cutListContainer: $("#cutList"),
+  partListContainer: $("#partList"),
   selectAllCutsButton: $("#selectAllCutsButton"),
   deselectAllCutsButton: $("#deselectAllCutsButton"),
   resetCutsButton: $("#resetCutsButton"),

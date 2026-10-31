@@ -327,7 +327,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
       await wait(WAIT_AFTER_SCROLL_MS);
     }
 
-    await setProgress("正在等待頁面與圖片載入完成，請勿操作網頁，完成後會自動開始截圖……", "…");
+    await setProgress("正在等待頁面與圖片載入完成，請勿切換分頁或操作網頁，完成後會自動開始截圖……", "…");
 
     const initiallyReady = await waitForReady(tabId, "viewport", INITIAL_READY_TIMEOUT_MS, 3);
 
@@ -356,7 +356,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
 
     for (let i = 0; i < maxFrames; i++) {
       await setProgress(
-        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿操作網頁……`,
+        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿切換分頁或操作網頁……`,
         String(i + 1)
       );
 
