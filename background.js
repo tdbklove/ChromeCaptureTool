@@ -49,6 +49,17 @@ const MAX_CAPTURE_ATTEMPTS = 3;
 // 同一時間只允許一項截圖工作，避免捲動與截圖互相干擾。
 let busyTask = null;
 
+// 使用者要求停止目前的長截圖或翻頁截圖：擷取迴圈會在下一個檢查點結束，保留已擷取的部分。
+let stopRequested = false;
+
+function requestStop() {
+  if (busyTask !== "stitch" && busyTask !== "pages") {
+    throw new Error("目前沒有進行中的長截圖或翻頁截圖。");
+  }
+
+  stopRequested = true;
+}
+
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -83,10 +94,12 @@ async function beginTask(name) {
   }
 
   busyTask = name;
+  stopRequested = false;
 }
 
 function endTask() {
   busyTask = null;
+  stopRequested = false;
 }
 
 // 擷取目前分頁的可見畫面，回傳 PNG Blob。
@@ -336,6 +349,10 @@ async function waitForMainImage(tabId, minSize, previousSignature, changeTimeout
   let latest = null;
 
   while (true) {
+    if (stopRequested) {
+      return { status: "stopped" };
+    }
+
     const now = Date.now();
     const main = await runInPage(tabId, findMainImageInPage, [minSize]);
     const changed = Boolean(main) && main.signature !== previousSignature;
@@ -402,6 +419,11 @@ async function capturePages(tab) {
     const minSize = await detectionMinSize();
 
     const first = await waitForMainImage(tab.id, minSize, null, 3000);
+
+    if (first.status === "stopped") {
+      throw new Error("已停止翻頁截圖，尚未擷取任何頁面。");
+    }
+
     let main = first.main;
 
     if (!main) {
@@ -415,7 +437,15 @@ async function capturePages(tab) {
     let lastCaptureAt = 0;
 
     for (let index = 0; index < MAX_PAGES; index++) {
-      await setProgress(`正在擷取第 ${index + 1} 頁，請勿切換分頁或操作網頁……`, String(index + 1));
+      if (stopRequested) {
+        endReason = "stopped";
+        break;
+      }
+
+      await setProgress(
+        `正在擷取第 ${index + 1} 頁，請勿切換分頁或操作網頁。可按「停止截圖」結束，已擷取的頁面會保留……`,
+        String(index + 1)
+      );
 
       await wait(Math.max(0, lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - Date.now()));
 
@@ -440,9 +470,14 @@ async function capturePages(tab) {
       let result = await waitForMainImage(tab.id, minSize, main.signature, PAGE_CHANGE_TIMEOUT_MS);
 
       // 完全沒有換圖：可能是按鍵時看圖程式還在播放動畫而忽略了按鍵，再按一次確認。
-      if (result.status === "no-change") {
+      if (result.status === "no-change" && !stopRequested) {
         await runInPage(tab.id, pressArrowRightInPage, [1]);
         result = await waitForMainImage(tab.id, minSize, main.signature, PAGE_RETRY_TIMEOUT_MS);
+      }
+
+      if (result.status === "stopped") {
+        endReason = "stopped";
+        break;
       }
 
       if (result.status === "no-change") {
@@ -456,6 +491,10 @@ async function capturePages(tab) {
       }
 
       main = result.main;
+    }
+
+    if (pages.length === 0) {
+      throw new Error("已停止翻頁截圖，尚未擷取任何頁面。");
     }
 
     const id = newId("pages");
@@ -494,6 +533,11 @@ async function waitForReady(tabId, scope, timeoutMs, requiredStable) {
   let lastCount = -2;
 
   while (Date.now() < deadline) {
+    // 使用者要求停止：不再等待，交由擷取迴圈結束。
+    if (stopRequested) {
+      return true;
+    }
+
     const state = await checkPageReady(tabId, scope);
 
     const ready =
@@ -571,15 +615,30 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
 
     let frameCount = 0;
     let done = false;
+    let stopped = false;
 
     for (let i = 0; i < maxFrames; i++) {
+      // 使用者按下「停止截圖」：保留已擷取的段落，不再往下擷取（例如不想截到下方的評論區）。
+      if (stopRequested) {
+        stopped = true;
+        done = true;
+        break;
+      }
+
       await setProgress(
-        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿切換分頁或操作網頁……`,
+        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿切換分頁或操作網頁。` +
+          "擷取到想要的位置時，可按「停止截圖」結束……",
         String(i + 1)
       );
 
       // 每一段都等待視窗附近的圖片載入完成，才拍攝。
       const frameReady = await waitForReady(tabId, "viewport", FRAME_READY_TIMEOUT_MS, 2);
+
+      if (stopRequested) {
+        stopped = true;
+        done = true;
+        break;
+      }
 
       if (!frameReady) {
         loadTimeouts++;
@@ -629,10 +688,17 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
     }
 
     if (frameCount === 0) {
-      throw new Error("沒有成功擷取任何畫面。");
+      throw new Error(stopped ? "已停止長截圖，尚未擷取任何畫面。" : "沒有成功擷取任何畫面。");
     }
 
-    return { frameCount, done, hiddenCount, loadTimeouts, scrollMode: target?.mode || "window" };
+    return {
+      frameCount,
+      done,
+      stopped,
+      hiddenCount,
+      loadTimeouts,
+      scrollMode: target?.mode || "window"
+    };
   } catch (error) {
     try {
       await deleteFrames(jobId);
@@ -712,6 +778,7 @@ async function startStitch(tabId, windowId) {
       jobId,
       batchIndex: 1,
       done: batch.done,
+      stopped: batch.stopped,
       hiddenCount: batch.hiddenCount,
       loadTimeouts: batch.loadTimeouts,
       scrollMode: batch.scrollMode,
@@ -724,6 +791,8 @@ async function startStitch(tabId, windowId) {
 
     session.editorTabId = await openOrUpdateEditor(session, tab);
     await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
+
+    return { stopped: batch.stopped };
   } finally {
     endTask();
   }
@@ -770,6 +839,7 @@ async function continueStitch(jobId, nextStartY) {
       jobId: nextJobId,
       batchIndex,
       done: batch.done,
+      stopped: batch.stopped,
       hiddenCount: batch.hiddenCount,
       loadTimeouts: batch.loadTimeouts,
       scrollMode: batch.scrollMode,
@@ -778,6 +848,8 @@ async function continueStitch(jobId, nextStartY) {
 
     updated.editorTabId = await openOrUpdateEditor(updated, null);
     await chrome.storage.local.set({ [STORAGE_KEYS.session]: updated });
+
+    return { stopped: batch.stopped };
   } finally {
     endTask();
   }
@@ -876,6 +948,16 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       throw new Error("找不到目前的分頁。");
     }
 
+    // 長截圖或翻頁截圖進行中，再按一次同一個快捷鍵：停止並保留已擷取的部分。
+    if (
+      (command === "capture-full" && busyTask === "stitch") ||
+      (command === "capture-pages" && busyTask === "pages")
+    ) {
+      requestStop();
+      await setProgress("正在停止，已擷取的部分會保留……", "■");
+      return;
+    }
+
     if (command === "capture-visible") {
       await captureVisible(tab);
     } else if (command === "capture-full") {
@@ -931,6 +1013,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse,
         "繼續截圖失敗。"
       );
+
+    case MESSAGES.stopCapture:
+      return respond(
+        Promise.resolve().then(() => {
+          requestStop();
+          return setProgress("正在停止，已擷取的部分會保留……", "■");
+        }),
+        sendResponse,
+        "無法停止截圖。"
+      );
+
+    case MESSAGES.getStatus:
+      sendResponse({ ok: true, busyTask });
+      return false;
 
     case MESSAGES.finishStitch:
       return respond(finishStitch(message.jobId), sendResponse, "清除暫存失敗。");

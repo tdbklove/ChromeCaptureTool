@@ -221,3 +221,17 @@ button:disabled {
   border-radius: 4px;
   background: var(--surface);
 }
+
+/* 停止截圖：長截圖或翻頁截圖進行中才顯示 */
+button.danger {
+  color: #fff;
+  background: #d93025;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #b3261e;
+}
+
+button[hidden] {
+  display: none;
+}

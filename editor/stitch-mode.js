@@ -397,7 +397,9 @@ export function buildStitchStatus() {
 
   let text = parts.join("，") + "。";
 
-  if (info.reachedBottom) {
+  if (info.stopped) {
+    text += "已依你的要求停止擷取，這是最後一批。";
+  } else if (info.reachedBottom) {
     text += "已擷取到頁面底部，這是最後一批。";
   } else if (state.nextStartY != null) {
     text += "尚未到頁面底部。下載完成後，可按「繼續截圖」擷取下一批。";
@@ -1200,7 +1202,9 @@ export function refreshStitchControls() {
 
   dom.continueButton.textContent = hasNextBatch
     ? `繼續截圖（第 ${(state.stitchInfo?.batchIndex || 1) + 1} 批）`
-    : (isCurrent ? "已擷取到頁面底部" : "無法繼續（已結束）");
+    : (isCurrent
+      ? (state.stitchInfo?.stopped ? "已停止擷取" : "已擷取到頁面底部")
+      : "無法繼續（已結束）");
   dom.continueButton.disabled = state.busy || !hasNextBatch;
 
   dom.finishButton.disabled = state.busy || !isCurrent;

@@ -3,12 +3,22 @@ import { MESSAGES, STORAGE_KEYS } from "./lib/constants.js";
 const captureButton = document.querySelector("#captureButton");
 const stitchButton = document.querySelector("#stitchButton");
 const pagesButton = document.querySelector("#pagesButton");
+const stopButton = document.querySelector("#stopButton");
 const settingsButton = document.querySelector("#settingsButton");
 const status = document.querySelector("#status");
 const shortcutTip = document.querySelector("#shortcutTip");
 
-// 背景工作進行中時，進度文字即時顯示在彈出視窗中。
+// 長截圖或翻頁截圖進行中時，進度文字即時顯示在彈出視窗中，並顯示「停止截圖」按鈕。
 let isStitchRunning = false;
+
+function setRunning(running) {
+  isStitchRunning = running;
+  stopButton.hidden = !running;
+  stopButton.disabled = false;
+  captureButton.disabled = running;
+  stitchButton.disabled = running;
+  pagesButton.disabled = running;
+}
 
 // 顯示截圖進度或結果；error 為 true 時以紅色顯示。沒有訊息時隱藏整個區塊。
 function setStatus(text, error = false) {
@@ -55,8 +65,7 @@ captureButton.addEventListener("click", async () => {
 });
 
 stitchButton.addEventListener("click", async () => {
-  stitchButton.disabled = true;
-  isStitchRunning = true;
+  setRunning(true);
   setStatus("等待頁面載入完成後自動開始截圖……");
 
   try {
@@ -70,7 +79,9 @@ stitchButton.addEventListener("click", async () => {
     });
 
     if (response?.ok) {
-      setStatus("長圖擷取完成，已開啟編輯頁。");
+      setStatus(response.stopped
+        ? "已停止長截圖，已擷取的部分已在編輯頁開啟。"
+        : "長圖擷取完成，已開啟編輯頁。");
     } else {
       setStatus(response?.error || "長圖擷取失敗，請重新嘗試。", true);
     }
@@ -78,15 +89,13 @@ stitchButton.addEventListener("click", async () => {
     console.error(error);
     setStatus(error.message || "無法啟動長圖擷取。", true);
   } finally {
-    stitchButton.disabled = false;
-    isStitchRunning = false;
+    setRunning(false);
   }
 });
 
 // 翻頁截圖：在背景程式中逐頁擷取，完成後開啟編輯頁。
 pagesButton.addEventListener("click", async () => {
-  pagesButton.disabled = true;
-  isStitchRunning = true;
+  setRunning(true);
   setStatus("正在尋找彈窗中的圖片……");
 
   try {
@@ -98,7 +107,9 @@ pagesButton.addEventListener("click", async () => {
     });
 
     if (response?.ok) {
-      setStatus(`已擷取 ${response.pageCount} 頁，已開啟編輯頁。`);
+      setStatus(response.endReason === "stopped"
+        ? `已停止翻頁截圖，已擷取的 ${response.pageCount} 頁已在編輯頁開啟。`
+        : `已擷取 ${response.pageCount} 頁，已開啟編輯頁。`);
     } else {
       setStatus(response?.error || "翻頁截圖失敗，請重新嘗試。", true);
     }
@@ -106,8 +117,25 @@ pagesButton.addEventListener("click", async () => {
     console.error(error);
     setStatus(error.message || "無法啟動翻頁截圖。", true);
   } finally {
-    pagesButton.disabled = false;
-    isStitchRunning = false;
+    setRunning(false);
+  }
+});
+
+// 停止截圖：背景程式會在下一個檢查點結束，保留已擷取的部分並開啟編輯頁。
+stopButton.addEventListener("click", async () => {
+  stopButton.disabled = true;
+  setStatus("正在停止，已擷取的部分會保留……");
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: MESSAGES.stopCapture });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || "無法停止截圖。");
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "無法停止截圖。", true);
+    stopButton.disabled = false;
   }
 });
 
@@ -121,10 +149,29 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
   const text = changes[STORAGE_KEYS.progress].newValue?.text;
 
-  if (isStitchRunning && text) {
+  if (!isStitchRunning) return;
+
+  if (text) {
     setStatus(text);
+  } else if (startedElsewhere) {
+    // 由快捷鍵或先前開啟的選單啟動的截圖已結束（進度文字被清除）。
+    startedElsewhere = false;
+    setRunning(false);
+    setStatus("截圖已結束，已開啟編輯頁。");
   }
 });
+
+// 開啟選單時，若有進行中的長截圖或翻頁截圖（例如用快捷鍵啟動，或關閉選單後再打開），
+// 也顯示進度與「停止截圖」按鈕。
+let startedElsewhere = false;
+
+chrome.runtime.sendMessage({ type: MESSAGES.getStatus }).then((response) => {
+  if (response?.busyTask === "stitch" || response?.busyTask === "pages") {
+    startedElsewhere = true;
+    setRunning(true);
+    setStatus(response.busyTask === "stitch" ? "長截圖進行中……" : "翻頁截圖進行中……");
+  }
+}).catch(() => {});
 
 function kbd(text) {
   const element = document.createElement("kbd");

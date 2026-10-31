@@ -159,7 +159,8 @@ const PAGE_END_MESSAGES = {
   "no-change": "按「→」鍵後圖片不再變化，判斷為最後一頁。",
   loop: "已回到看過的圖片，停止擷取。",
   limit: "已達單次擷取的高度上限，請先下載，再到原網頁從下一頁繼續翻頁截圖。",
-  max: "已達單次最多擷取的頁數，請先下載，再到原網頁從下一頁繼續翻頁截圖。"
+  max: "已達單次最多擷取的頁數，請先下載，再到原網頁從下一頁繼續翻頁截圖。",
+  stopped: "已依你的要求停止翻頁截圖。"
 };
 
 // 將各頁圖片由上到下排在同一張畫布上，每頁作為一個項目（沿用單張截圖的清單、下載與複製）。
@@ -309,6 +310,7 @@ async function loadStitch(jobId) {
     loadTimeouts: isCurrent ? session.loadTimeouts ?? 0 : 0,
     batchIndex: isCurrent ? session.batchIndex ?? 1 : 1,
     scrollMode: isCurrent ? session.scrollMode : "window",
+    stopped: isCurrent ? session.stopped === true : false,
     reachedBottom,
     forcedEnd: built.forcedEnd
   };
