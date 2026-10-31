@@ -107,6 +107,20 @@
     </section>
 
     <section class="card">
+      <h2>圖片偵測</h2>
+
+      <label class="field">
+        <span>最小圖片尺寸：<output id="minSizeValue">40</output> 像素</span>
+        <input id="minSizeInput" type="range" min="16" max="300" step="2">
+      </label>
+      <p class="help">
+        寬或高小於這個尺寸的圖片（例如圖示、按鈕、頭像）不會被偵測。
+        數值越小偵測到的圖片越多；長條截圖也會依此判斷圖片之間的間隔。預設為 40。
+      </p>
+      <button id="minSizeResetButton" type="button" class="text">恢復預設值</button>
+    </section>
+
+    <section class="card">
       <h2>快捷鍵</h2>
       <ul id="shortcutList" class="shortcuts"></ul>
       <button id="shortcutsButton" type="button" class="secondary">變更快捷鍵</button>

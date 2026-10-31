@@ -52,9 +52,14 @@ function onPointerDown(event) {
   const point = getCanvasPoint(event);
 
   if (state.mode === "stitch") {
+    // 點選自訂移除框以外的地方時，取消點選（下方點到自訂移除框時會重新設定）。
+    const previousActiveCut = state.activeCutIndex;
+    state.activeCutIndex = null;
+
     // 新增移除框模式：拖曳出一個新的範圍。
     if (state.addCutMode) {
       state.customCuts.push({ startY: point.y, endY: point.y, enabled: true });
+      state.activeCutIndex = state.customCuts.length - 1;
 
       state.dragCut = {
         adding: true,
@@ -95,6 +100,11 @@ function onPointerDown(event) {
     const hit = hitTestCut(point);
 
     if (hit) {
+      if (hit.kind === "custom") {
+        state.activeCutIndex = hit.index;
+        hit.wasActive = previousActiveCut === hit.index;
+      }
+
       state.dragCut = {
         adding: false,
         hit,
@@ -259,6 +269,7 @@ function finishCutDrag(moved, point) {
 
     if (tooSmall) {
       state.customCuts.splice(index, 1);
+      state.activeCutIndex = null;
     }
 
     state.addCutMode = false;
@@ -280,6 +291,12 @@ function finishCutDrag(moved, point) {
       toggleTrim(edge);
     } else if (drag.hit.kind === "gap") {
       toggleGap(drag.hit.id);
+    } else if (!drag.hit.wasActive) {
+      // 第一次點擊只點選，方便按 Delete 刪除；再點一次才切換啟用／停用。
+      requestDraw();
+      setStatus(
+        `已點選自訂 ${drag.hit.index + 1}。按 Delete 可刪除，再點一次可切換啟用／停用，按 Esc 取消點選。`
+      );
     } else {
       const cut = state.customCuts[drag.hit.index];
       cut.enabled = !(cut.enabled !== false);

@@ -36,8 +36,16 @@
               title="把所有偵測框還原到自動偵測時的位置，並清除手動選取">還原偵測框</button>
           </div>
         </div>
-        <button id="saveButton" type="button" class="primary" disabled
-          title="下載目前手動選取的範圍（不是偵測框）">下載手動選取範圍</button>
+        <div class="groupButtons">
+          <button id="undoButton" type="button" class="secondary" disabled
+            title="復原上一步（Ctrl＋Z）">復原</button>
+          <button id="redoButton" type="button" class="secondary" disabled
+            title="重做（Ctrl＋Y）">重做</button>
+          <button id="copySelectionButton" type="button" class="secondary" disabled
+            title="把目前手動選取的範圍複製到剪貼簿">複製手動選取範圍</button>
+          <button id="saveButton" type="button" class="primary" disabled
+            title="下載目前手動選取的範圍（不是偵測框）">下載手動選取範圍</button>
+        </div>
       </div>
 
       <!-- 說明文字依單張／長條模式由 editor/main.js 設定 -->

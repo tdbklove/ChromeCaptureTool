@@ -140,6 +140,49 @@ export async function downloadItems(items, onProgress) {
   return { saved, failed, location, notice: target.notice };
 }
 
+// 複製到剪貼簿（一律使用 PNG：瀏覽器的剪貼簿只支援 PNG 圖片）。
+export async function copyRects(rects) {
+  const list = Array.isArray(rects) ? rects : [rects];
+  const blob = await canvasToBlob(composeCanvas(list), "image/png");
+
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+}
+
+// 結果卡片上的「複製」按鈕。getRects 在點擊時才取得範圍（範圍可能已被調整）。
+export function createCopyButton(getRects, setStatus) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = "複製";
+  button.title = "複製到剪貼簿，可直接貼到聊天軟體或文件中";
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "複製中……";
+
+    try {
+      await copyRects(getRects());
+      setStatus("已複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
+    } catch (error) {
+      console.error("複製失敗：", error);
+      setStatus("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。");
+    } finally {
+      button.disabled = false;
+      button.textContent = "複製";
+    }
+  });
+
+  return button;
+}
+
+// 卡片底部的按鈕列（下載與複製並排）。
+export function buttonRow(...buttons) {
+  const row = document.createElement("div");
+  row.className = "cardButtons";
+  row.append(...buttons);
+  return row;
+}
+
 // 下載結果的狀態文字。
 export function describeDownload(result, noun) {
   const parts = [];

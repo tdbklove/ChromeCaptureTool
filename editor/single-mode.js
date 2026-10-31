@@ -4,6 +4,8 @@ import { clamp } from "../lib/stitch-plan.js";
 import { pxPerCss, requestDraw } from "./canvas.js";
 import { dom, setStatus } from "./dom.js";
 import {
+  buttonRow,
+  createCopyButton,
   describeDownload,
   downloadItems,
   makeThumbnail,
@@ -358,7 +360,13 @@ export async function renderResults() {
       }
     });
 
-    card.append(heading, preview, dimensions, selectLabel, downloadButton);
+    card.append(
+      heading,
+      preview,
+      dimensions,
+      selectLabel,
+      buttonRow(downloadButton, createCopyButton(() => ({ ...item }), setStatus))
+    );
     dom.resultsContainer.appendChild(card);
 
     try {

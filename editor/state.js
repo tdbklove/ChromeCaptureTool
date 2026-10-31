@@ -62,6 +62,8 @@ export const state = {
     bottom: { size: 0, removed: false },
     detected: { top: 0, bottom: 0 }
   },
+  // 目前點選的自訂移除框（customCuts 的索引），可按 Delete 刪除。
+  activeCutIndex: null,
   // 不加入合併的段落範圍（{ startY, endY }）。段落會隨移除區域重新計算，
   // 因此記錄範圍而不是段落編號：新段落的中心落在這些範圍內，就維持「不加入合併」。
   excludedPartRanges: [],

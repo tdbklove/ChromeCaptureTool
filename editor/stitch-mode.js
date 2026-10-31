@@ -14,6 +14,8 @@ import {
 import { pxPerCss, requestDraw, visibleRange } from "./canvas.js";
 import { dom, setStatus } from "./dom.js";
 import {
+  buttonRow,
+  createCopyButton,
   describeDownload,
   downloadItems,
   makeThumbnail,
@@ -521,6 +523,25 @@ export function drawStitchOverlay(ctx) {
     drawLabel(`自訂 ${index + 1}：移除`, "#6d28d9", labelX, cut.startY + labelSize + 4 * ratio);
   });
 
+  // 目前點選的自訂移除框：粗框標示，可按 Delete 刪除。
+  const activeCut = state.customCuts[state.activeCutIndex];
+
+  if (activeCut && activeCut.endY > activeCut.startY) {
+    ctx.save();
+    ctx.strokeStyle = "#6d28d9";
+    ctx.lineWidth = Math.max(3, Math.round(3 * ratio));
+    ctx.strokeRect(0, activeCut.startY, state.width, activeCut.endY - activeCut.startY);
+    ctx.restore();
+
+    drawLabel(
+      "已點選（Delete 刪除）",
+      "#6d28d9",
+      state.width - 8 * ratio,
+      activeCut.startY + labelSize + 4 * ratio,
+      "right"
+    );
+  }
+
   // 上下裁切：裁掉時以紅色標示；不論有沒有裁切，上下邊線都有拉條可以拖曳。
   for (const edge of ["top", "bottom"]) {
     const entry = state.trims[edge];
@@ -852,8 +873,7 @@ function renderCutList() {
 
         removeButton.addEventListener("click", (event) => {
           event.preventDefault();
-          state.customCuts.splice(index, 1);
-          updateStitchView();
+          removeCustomCut(index);
         });
 
         return checkboxRow(
@@ -946,7 +966,7 @@ export async function renderStitchGroups() {
       }
     });
 
-    card.appendChild(downloadButton);
+    card.appendChild(buttonRow(downloadButton, createCopyButton(() => rect, setStatus)));
     dom.resultsContainer.appendChild(card);
 
     try {
@@ -1182,7 +1202,34 @@ export function refreshStitchControls() {
 
 // ---- 按鈕 ----
 
+function removeCustomCut(index) {
+  state.customCuts.splice(index, 1);
+
+  if (state.activeCutIndex === index) {
+    state.activeCutIndex = null;
+  } else if (state.activeCutIndex > index) {
+    state.activeCutIndex--;
+  }
+
+  updateStitchView();
+}
+
+// 刪除目前點選的自訂移除框（Delete 鍵）。回傳是否有刪除。
+export function deleteActiveCut() {
+  const index = state.activeCutIndex;
+
+  if (index == null || !state.customCuts[index]) {
+    return false;
+  }
+
+  removeCustomCut(index);
+  setStatus(`已刪除自訂 ${index + 1}。可按 Ctrl＋Z 復原。`);
+
+  return true;
+}
+
 export function resetCuts() {
+  state.activeCutIndex = null;
   state.cutOverrides = new Map();
   state.customCuts = [];
   state.excludedPartRanges = [];

@@ -773,3 +773,18 @@ button.warning:not(:disabled) {
   text-align: center;
   color: var(--text-2);
 }
+
+/* 結果卡片的按鈕列：下載與複製並排 */
+.cardButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.resultCard .cardButtons button:first-child {
+  flex: 1;
+}
+
+.resultCard .cardButtons button.secondary {
+  width: auto;
+  flex: none;
+}

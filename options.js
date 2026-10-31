@@ -1,6 +1,6 @@
 import { deleteHandle, getHandle, saveHandle } from "./lib/db.js";
 import { FOLDER_HANDLE_KEY, sanitizeFolderPath } from "./lib/downloads.js";
-import { getDownloadSettings, updateDownloadSettings } from "./lib/settings.js";
+import { DEFAULT_DOWNLOAD_SETTINGS, getDownloadSettings, updateDownloadSettings } from "./lib/settings.js";
 
 const modeInputs = document.querySelectorAll("input[name='mode']");
 const subfolderInput = document.querySelector("#subfolderInput");
@@ -16,6 +16,9 @@ const formatInputs = document.querySelectorAll("input[name='format']");
 const qualityRow = document.querySelector("#qualityRow");
 const qualityInput = document.querySelector("#qualityInput");
 const qualityValue = document.querySelector("#qualityValue");
+const minSizeInput = document.querySelector("#minSizeInput");
+const minSizeValue = document.querySelector("#minSizeValue");
+const minSizeResetButton = document.querySelector("#minSizeResetButton");
 
 const COMMAND_LABELS = {
   _execute_action: "開啟截圖選單",
@@ -68,6 +71,8 @@ async function load() {
   qualityInput.value = String(Math.round(settings.quality * 100));
   qualityValue.textContent = qualityInput.value;
   applyFormatUi(settings.format);
+
+  showMinSize(settings.minImageSize);
   applyModeUi(settings.mode);
 
   const handle = await getHandle(FOLDER_HANDLE_KEY);
@@ -112,6 +117,23 @@ qualityInput.addEventListener("input", () => {
 });
 
 qualityInput.addEventListener("change", () => save({ quality: Number(qualityInput.value) / 100 }));
+
+function showMinSize(value) {
+  minSizeInput.value = String(value);
+  minSizeValue.textContent = String(value);
+}
+
+minSizeInput.addEventListener("input", () => {
+  minSizeValue.textContent = minSizeInput.value;
+});
+
+minSizeInput.addEventListener("change", () =>
+  save({ minImageSize: Number(minSizeInput.value) }, "已儲存設定，下次截圖時生效。"));
+
+minSizeResetButton.addEventListener("click", async () => {
+  showMinSize(DEFAULT_DOWNLOAD_SETTINGS.minImageSize);
+  await save({ minImageSize: DEFAULT_DOWNLOAD_SETTINGS.minImageSize }, "已恢復預設值。");
+});
 
 pickFolderButton.addEventListener("click", async () => {
   try {

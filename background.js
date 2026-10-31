@@ -25,6 +25,8 @@ import {
   scrollToInPage
 } from "./lib/page-scripts.js";
 
+import { getDownloadSettings, MIN_IMAGE_SIZE_RANGE } from "./lib/settings.js";
+
 const SCROLL_RATIO = 0.8;
 const WAIT_AFTER_SCROLL_MS = 300;
 
@@ -140,6 +142,20 @@ async function showBadgeError(message) {
 
 // ---- 單張截圖 ----
 
+// 圖片偵測的最小尺寸（使用者可在設定頁調整）。
+async function detectionMinSize() {
+  try {
+    const settings = await getDownloadSettings();
+    const value = Number(settings.minImageSize);
+
+    return Number.isFinite(value)
+      ? Math.min(MIN_IMAGE_SIZE_RANGE.max, Math.max(MIN_IMAGE_SIZE_RANGE.min, value))
+      : MIN_MEDIA_SIZE;
+  } catch (error) {
+    return MIN_MEDIA_SIZE;
+  }
+}
+
 // 將截圖裁成網頁內容區域，去掉右側與底部的捲軸（Windows 常見）。
 async function cropToContent(blob, pageInfo) {
   const bitmap = await createImageBitmap(blob);
@@ -173,13 +189,13 @@ function sameViewportState(a, b) {
   );
 }
 
-async function scanVisible(tabId) {
+async function scanVisible(tabId, minSize) {
   try {
     // 清除長截圖可能遺留的捲動區塊標記，單張截圖一律以整個視窗為範圍。
     await runInPage(tabId, releaseScrollTargetInPage);
 
     const pageInfo = await runInPage(tabId, scanPageInPage, [{
-      minSize: MIN_MEDIA_SIZE,
+      minSize,
       includeExtras: true,
       visibleOnly: true,
       includeSeparators: false
@@ -204,6 +220,8 @@ async function captureVisible(tab) {
   await beginTask("single");
 
   try {
+    const minSize = await detectionMinSize();
+
     let pageInfo = null;
     let rawBlob = null;
     let aligned = false;
@@ -213,7 +231,7 @@ async function captureVisible(tab) {
         await wait(CAPTURE_RETRY_WAIT_MS);
       }
 
-      pageInfo = await scanVisible(tab.id);
+      pageInfo = await scanVisible(tab.id, minSize);
       rawBlob = await captureTab(tab.windowId);
 
       const after = await runInPage(tab.id, readViewportStateInPage);
@@ -297,9 +315,9 @@ async function waitForReady(tabId, scope, timeoutMs, requiredStable) {
   return false;
 }
 
-async function scanForStitch(tabId) {
+async function scanForStitch(tabId, minSize) {
   const scan = await runInPage(tabId, scanPageInPage, [{
-    minSize: MIN_MEDIA_SIZE,
+    minSize,
     includeExtras: false,
     includeSeparators: true
   }]);
@@ -317,6 +335,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
   let pageTouched = false;
   let loadTimeouts = 0;
   let hiddenCount = 0;
+  const minSize = await detectionMinSize();
 
   try {
     pageTouched = true;
@@ -336,7 +355,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
     }
 
     // 先掃描一次，取得可見高度與裝置像素比例，據以決定步距與批次上限。
-    const probe = await scanForStitch(tabId);
+    const probe = await scanForStitch(tabId, minSize);
     const visibleHeight = probe.clip.height;
 
     if (!visibleHeight || visibleHeight <= 0) {
@@ -372,7 +391,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
 
       await wait(WAIT_AFTER_SCROLL_MS);
 
-      const scan = await scanForStitch(tabId);
+      const scan = await scanForStitch(tabId, minSize);
 
       // 拍攝前後都檢查，避免在檢查與拍攝之間切換分頁。
       await ensureTargetTabActive(tabId, windowId);

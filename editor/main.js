@@ -14,8 +14,9 @@ import {
   updateZoomControls
 } from "./canvas.js";
 import { dom, setStatus } from "./dom.js";
+import { initHistory, recordHistory, redo, resetHistory, undo } from "./history.js";
 import { initInteraction } from "./interaction.js";
-import { describeDownload, downloadItems, revokePreviewUrls } from "./output.js";
+import { copyRects, describeDownload, downloadItems, revokePreviewUrls } from "./output.js";
 import {
   drawActiveItem,
   drawDetectionBoxes,
@@ -30,6 +31,7 @@ import {
   buildStitchedCanvas,
   buildStitchStatus,
   defaultRemovedGapIds,
+  deleteActiveCut,
   detectedEdges,
   detectSides,
   drawStitchOverlay,
@@ -40,7 +42,9 @@ import {
   recomputeStitch,
   refreshStitchControls,
   renderStitchGroups,
-  resetCuts
+  resetCuts,
+  updateAddCutButton,
+  updateStitchView
 } from "./stitch-mode.js";
 
 const SELECTION_COLOR = "#00a8ff";
@@ -234,6 +238,8 @@ async function load() {
     }
 
     dom.saveButton.disabled = false;
+    dom.copySelectionButton.disabled = false;
+    resetHistory();
   } catch (error) {
     console.error(error);
     setStatus(error.message || "無法載入截圖。");
@@ -287,9 +293,131 @@ dom.saveButton.addEventListener("click", async () => {
   }
 });
 
+dom.copySelectionButton.addEventListener("click", async () => {
+  if (!state.loaded || !state.selection || state.selection.width < 2) {
+    setStatus("請先在截圖上拖曳，選取要複製的範圍。");
+    return;
+  }
+
+  dom.copySelectionButton.disabled = true;
+
+  try {
+    await copyRects({ ...state.selection });
+    setStatus("已將手動選取範圍複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
+  } catch (error) {
+    console.error("複製失敗：", error);
+    setStatus("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。");
+  } finally {
+    dom.copySelectionButton.disabled = false;
+  }
+});
+
 dom.settingsButton.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
+
+// ---- 復原／重做 ----
+
+// 從歷史紀錄還原狀態後，重新計算並更新畫面。
+function afterRestore() {
+  state.activeCutIndex = null;
+  state.activeItemId = null;
+
+  if (state.mode === "stitch") {
+    updateStitchView();
+  } else {
+    renderResults();
+    requestDraw();
+  }
+
+  refreshControls();
+}
+
+function undoStep() {
+  setStatus(undo() ? "已復原上一步。" : "沒有可以復原的操作。");
+}
+
+function redoStep() {
+  setStatus(redo() ? "已重做。" : "沒有可以重做的操作。");
+}
+
+dom.undoButton.addEventListener("click", undoStep);
+dom.redoButton.addEventListener("click", redoStep);
+
+// 每次操作（滑鼠放開、勾選、按下按鈕）結束後記錄一次狀態；與上一筆相同時不會重複記錄。
+for (const type of ["pointerup", "change", "click"]) {
+  document.addEventListener(type, () => setTimeout(recordHistory, 0));
+}
+
+// ---- 鍵盤操作 ----
+
+document.addEventListener("keydown", (event) => {
+  if (!state.loaded || dom.mergeDialog.open) return;
+
+  const ctrl = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase();
+
+  // Ctrl＋Z 復原；Ctrl＋Y 或 Ctrl＋Shift＋Z 重做。
+  if (ctrl && key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    undoStep();
+    return;
+  }
+
+  if (ctrl && (key === "y" || (key === "z" && event.shiftKey))) {
+    event.preventDefault();
+    redoStep();
+    return;
+  }
+
+  // Esc：取消新增移除框模式、手動選取，以及目前點選的框。
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelCurrent();
+    return;
+  }
+
+  // Delete／Backspace：刪除目前點選的自訂移除框。
+  if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault();
+
+    if (state.mode === "stitch" && deleteActiveCut()) {
+      setTimeout(recordHistory, 0);
+      return;
+    }
+
+    setStatus(state.mode === "stitch"
+      ? "請先在預覽區點選要刪除的自訂移除框（紫色），再按 Delete。"
+      : "Delete 用於刪除長條截圖中的自訂移除框。");
+  }
+});
+
+function cancelCurrent() {
+  const messages = [];
+
+  if (state.addCutMode) {
+    state.addCutMode = false;
+    updateAddCutButton();
+    messages.push("已取消新增移除框");
+  }
+
+  if (state.selection) {
+    state.selection = null;
+    state.startPoint = null;
+    state.isDragging = false;
+    messages.push("已取消手動選取");
+  }
+
+  if (state.activeItemId != null || state.activeCutIndex != null) {
+    state.activeItemId = null;
+    state.activeCutIndex = null;
+    messages.push("已取消點選");
+  }
+
+  requestDraw();
+  setStatus(messages.length > 0 ? `${messages.join("、")}。` : "目前沒有可以取消的操作。");
+  setTimeout(recordHistory, 0);
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
@@ -318,6 +446,7 @@ initSingleMode(refreshControls);
 initStitchMode(refreshControls);
 initInteraction();
 initZoom();
+initHistory(afterRestore);
 
 getDownloadSettings()
   .catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))

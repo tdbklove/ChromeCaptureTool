@@ -12,6 +12,9 @@ export const dom = {
   settingsButton: $("#settingsButton"),
 
   saveButton: $("#saveButton"),
+  copySelectionButton: $("#copySelectionButton"),
+  undoButton: $("#undoButton"),
+  redoButton: $("#redoButton"),
   resetButton: $("#resetButton"),
   resetAllButton: $("#resetAllButton"),
 
