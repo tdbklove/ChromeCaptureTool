@@ -107,7 +107,14 @@ Chrome 不允許擴充功能擷取以下頁面：`chrome://` 開頭的內建頁�
 
 ```
 manifest.json         擴充功能設定
-background.js         背景程式：截圖、長截圖流程、暫存清除、快捷鍵
+background.js         背景程式進入點：接收選單、編輯頁的訊息與快捷鍵
+background/           背景程式的各個功能
+  task.js             目前進行中的截圖工作與停止要求
+  common.js           共用工具（截圖、執行網頁腳本、進度與錯誤提示）
+  single.js           單張截圖
+  stitch.js           長條截圖
+  pages.js            翻頁截圖
+  cleanup.js          暫存自動清除
 popup.html/js/css     工具列選單
 editor.html/css       編輯頁
 editor/               編輯頁的程式

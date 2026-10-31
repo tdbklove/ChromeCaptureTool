@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "截圖與裁切 - My Screenshot Cropper",
-  "version": "1.18.1",
+  "version": "1.18.2",
   "description": "單張截圖、長條截圖與翻頁截圖，自動偵測圖片並裁切、移除空白與廣告間隔。",
   "minimum_chrome_version": "116",
   "icons": {
