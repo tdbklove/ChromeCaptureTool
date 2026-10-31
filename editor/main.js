@@ -5,6 +5,7 @@ import { getCapture } from "../lib/db.js";
 import { siteNameFromUrl, timestampText } from "../lib/downloads.js";
 import { DEFAULT_DOWNLOAD_SETTINGS, getDownloadSettings } from "../lib/settings.js";
 import { buildDetections } from "../lib/stitch-plan.js";
+import { initTheme } from "../lib/theme.js";
 import {
   drawNow,
   initZoom,
@@ -548,6 +549,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 window.addEventListener("pagehide", revokePreviewUrls);
 
+initTheme();
 setOverlayDrawer(drawOverlay);
 initSingleMode(refreshControls);
 initStitchMode(refreshControls);

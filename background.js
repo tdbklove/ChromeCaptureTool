@@ -102,12 +102,28 @@ function endTask() {
   stopRequested = false;
 }
 
-// 擷取目前分頁的可見畫面，回傳 PNG Blob。
-async function captureTab(windowId) {
-  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
-  const response = await fetch(dataUrl);
+// Chrome 限制每秒最多截圖 2 次。超過時會回傳此錯誤，稍等後重試即可。
+const CAPTURE_QUOTA_ERROR = /MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND|exceeds|quota/i;
+const CAPTURE_QUOTA_RETRIES = 4;
+const CAPTURE_QUOTA_WAIT_MS = 700;
 
-  return response.blob();
+// 擷取目前分頁的可見畫面，回傳 PNG Blob。
+// 電腦較忙時，兩次截圖的間隔可能比預期短而超過次數限制，這時會自動等待後重試。
+async function captureTab(windowId) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+      const response = await fetch(dataUrl);
+
+      return await response.blob();
+    } catch (error) {
+      if (attempt >= CAPTURE_QUOTA_RETRIES || !CAPTURE_QUOTA_ERROR.test(error?.message || "")) {
+        throw error;
+      }
+
+      await wait(CAPTURE_QUOTA_WAIT_MS * (attempt + 1));
+    }
+  }
 }
 
 // 確認目標分頁仍是該視窗的前景分頁。captureVisibleTab 只會拍攝前景分頁，

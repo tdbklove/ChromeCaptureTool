@@ -2,25 +2,8 @@
    圖片裁切工具：極簡、扁平化的 Google 風格
    ========================================================== */
 
+/* 色彩變數定義在 theme.css（淺色、深色共用） */
 :root {
-  --primary: #1a73e8;
-  --primary-hover: #1765cc;
-  --primary-soft: #e8f0fe;
-  --primary-text: #174ea6;
-
-  --text: #202124;
-  --text-2: #5f6368;
-  --text-3: #80868b;
-
-  --border: #dadce0;
-  --surface: #ffffff;
-  --surface-2: #f8f9fa;
-  --workspace: #eceff1;
-
-  --danger: #d93025;
-  --warning-bg: #fef7e0;
-  --warning-text: #b06000;
-
   --radius: 12px;
   --radius-sm: 8px;
 
@@ -129,7 +112,7 @@ button.primary,
 #downloadSelectedButton,
 #downloadAllGroupsButton,
 #continueButton {
-  color: #fff;
+  color: var(--on-primary);
   background: var(--primary);
 }
 
@@ -180,8 +163,8 @@ button:focus-visible {
 }
 
 button:disabled {
-  color: #9aa0a6;
-  background: #f1f3f4;
+  color: var(--disabled-text);
+  background: var(--disabled-bg);
   border-color: transparent;
   cursor: default;
 }
@@ -258,7 +241,7 @@ section {
   max-width: 100%;
   background: var(--surface);
   border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
+  box-shadow: 0 1px 2px var(--shadow);
 }
 
 #canvas {
@@ -708,18 +691,18 @@ button {
 .selectRow.overLimit {
   margin: 0 -6px;
   padding: 2px 6px;
-  color: #b3261e;
-  background: #fce8e6;
+  color: var(--error-text);
+  background: var(--error-bg);
   border-radius: 4px;
 }
 
 .resultCard.overLimit {
-  background: #fce8e6;
-  border-color: #f28b82;
+  background: var(--error-bg);
+  border-color: var(--error-border);
 }
 
 .resultCard.overLimit .selectRow {
-  color: #b3261e;
+  color: var(--error-text);
   font-weight: 500;
 }
 
@@ -727,15 +710,15 @@ button {
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.6;
-  color: #b3261e;
-  background: #fce8e6;
-  border: 1px solid #f28b82;
+  color: var(--error-text);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
   border-radius: var(--radius-sm);
 }
 
 button.warning:not(:disabled) {
-  color: #b3261e;
-  border-color: #f28b82;
+  color: var(--error-text);
+  border-color: var(--error-border);
 }
 
 .dialog {
@@ -743,16 +726,16 @@ button.warning:not(:disabled) {
   padding: 20px 24px;
   border: 0;
   border-radius: var(--radius);
-  box-shadow: 0 8px 28px rgba(60, 64, 67, 0.3);
+  box-shadow: 0 8px 28px var(--shadow-strong);
 }
 
 .dialog::backdrop {
-  background: rgba(32, 33, 36, 0.4);
+  background: var(--backdrop);
 }
 
 .dialog h2 {
   margin: 0 0 12px;
-  color: #b3261e;
+  color: var(--error-text);
 }
 
 .dialog p {

@@ -2,20 +2,8 @@
    設定頁：與彈出視窗相同的極簡風格
    ========================================================== */
 
+/* 色彩變數定義在 theme.css（淺色、深色共用） */
 :root {
-  --primary: #1a73e8;
-  --primary-hover: #1765cc;
-  --primary-soft: #e8f0fe;
-  --primary-text: #174ea6;
-
-  --text: #202124;
-  --text-2: #5f6368;
-  --text-3: #80868b;
-
-  --border: #dadce0;
-  --surface: #ffffff;
-  --surface-2: #f8f9fa;
-
   --font: "Google Sans", "Roboto", "Noto Sans TC", "Microsoft JhengHei",
     system-ui, -apple-system, "Segoe UI", sans-serif;
 }

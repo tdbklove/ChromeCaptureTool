@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>截圖與裁切：設定</title>
   <link rel="icon" href="icons/icon-32.png">
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="options.css">
   <script src="options.js" type="module"></script>
 </head>
@@ -118,6 +120,36 @@
         數值越小偵測到的圖片越多；長條截圖也會依此判斷圖片之間的間隔。預設為 40。
       </p>
       <button id="minSizeResetButton" type="button" class="text">恢復預設值</button>
+    </section>
+
+    <section class="card">
+      <h2>外觀</h2>
+
+      <label class="option">
+        <input type="radio" name="theme" value="system">
+        <span>
+          <strong>跟隨瀏覽器（預設）</strong>
+          <small>依 Chrome「設定 → 外觀 → 模式」自動切換淺色或深色。</small>
+        </span>
+      </label>
+
+      <label class="option">
+        <input type="radio" name="theme" value="light">
+        <span>
+          <strong>淺色</strong>
+          <small>一律使用淺色。</small>
+        </span>
+      </label>
+
+      <label class="option">
+        <input type="radio" name="theme" value="dark">
+        <span>
+          <strong>深色</strong>
+          <small>一律使用深色。</small>
+        </span>
+      </label>
+
+      <p class="help">選單、編輯頁與設定頁都會套用，已開啟的頁面會立即更新。</p>
     </section>
 
     <section class="card">

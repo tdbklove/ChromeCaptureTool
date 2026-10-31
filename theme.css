@@ -1,0 +1,121 @@
+/* ==========================================================
+   色彩主題：彈出視窗、編輯頁、設定頁共用
+   - 預設（跟隨瀏覽器）：依瀏覽器的外觀模式（淺色／深色）自動切換
+   - <html data-theme="light">：固定淺色
+   - <html data-theme="dark">：固定深色
+   ========================================================== */
+
+:root {
+  color-scheme: light;
+
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
+  --primary-soft: #e8f0fe;
+  --primary-text: #174ea6;
+  --on-primary: #ffffff;
+
+  --text: #202124;
+  --text-2: #5f6368;
+  --text-3: #80868b;
+
+  --border: #dadce0;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --workspace: #eceff1;
+
+  --disabled-text: #9aa0a6;
+  --disabled-bg: #f1f3f4;
+
+  --danger: #d93025;
+  --danger-hover: #b3261e;
+  --on-danger: #ffffff;
+
+  --error-text: #b3261e;
+  --error-bg: #fce8e6;
+  --error-border: #f28b82;
+
+  --warning-bg: #fef7e0;
+  --warning-text: #b06000;
+
+  --shadow: rgba(60, 64, 67, 0.2);
+  --shadow-strong: rgba(60, 64, 67, 0.3);
+  --backdrop: rgba(32, 33, 36, 0.4);
+}
+
+/* 深色：設定為「深色」時 */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --primary: #8ab4f8;
+  --primary-hover: #aecbfa;
+  --primary-soft: #253247;
+  --primary-text: #a8c7fa;
+  --on-primary: #202124;
+
+  --text: #e8eaed;
+  --text-2: #bdc1c6;
+  --text-3: #9aa0a6;
+
+  --border: #3c4043;
+  --surface: #202124;
+  --surface-2: #292a2d;
+  --workspace: #17181a;
+
+  --disabled-text: #80868b;
+  --disabled-bg: #35363a;
+
+  --danger: #ee675c;
+  --danger-hover: #f28b82;
+  --on-danger: #202124;
+
+  --error-text: #f28b82;
+  --error-bg: #3c2321;
+  --error-border: #8c3a34;
+
+  --warning-bg: #3b3220;
+  --warning-text: #fdd663;
+
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-strong: rgba(0, 0, 0, 0.6);
+  --backdrop: rgba(0, 0, 0, 0.6);
+}
+
+/* 深色：設定為「跟隨瀏覽器」，且瀏覽器使用深色模式時（內容與上方相同） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --primary: #8ab4f8;
+    --primary-hover: #aecbfa;
+    --primary-soft: #253247;
+    --primary-text: #a8c7fa;
+    --on-primary: #202124;
+
+    --text: #e8eaed;
+    --text-2: #bdc1c6;
+    --text-3: #9aa0a6;
+
+    --border: #3c4043;
+    --surface: #202124;
+    --surface-2: #292a2d;
+    --workspace: #17181a;
+
+    --disabled-text: #80868b;
+    --disabled-bg: #35363a;
+
+    --danger: #ee675c;
+    --danger-hover: #f28b82;
+    --on-danger: #202124;
+
+    --error-text: #f28b82;
+    --error-bg: #3c2321;
+    --error-border: #8c3a34;
+
+    --warning-bg: #3b3220;
+    --warning-text: #fdd663;
+
+    --shadow: rgba(0, 0, 0, 0.5);
+    --shadow-strong: rgba(0, 0, 0, 0.6);
+    --backdrop: rgba(0, 0, 0, 0.6);
+  }
+}

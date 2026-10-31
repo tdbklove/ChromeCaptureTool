@@ -1,4 +1,7 @@
 import { MESSAGES, STORAGE_KEYS } from "./lib/constants.js";
+import { initTheme } from "./lib/theme.js";
+
+initTheme();
 
 const captureButton = document.querySelector("#captureButton");
 const stitchButton = document.querySelector("#stitchButton");
