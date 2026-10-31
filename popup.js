@@ -2,6 +2,7 @@ import { MESSAGES, STORAGE_KEYS } from "./lib/constants.js";
 
 const captureButton = document.querySelector("#captureButton");
 const stitchButton = document.querySelector("#stitchButton");
+const pagesButton = document.querySelector("#pagesButton");
 const settingsButton = document.querySelector("#settingsButton");
 const status = document.querySelector("#status");
 const shortcutTip = document.querySelector("#shortcutTip");
@@ -82,6 +83,34 @@ stitchButton.addEventListener("click", async () => {
   }
 });
 
+// 翻頁截圖：在背景程式中逐頁擷取，完成後開啟編輯頁。
+pagesButton.addEventListener("click", async () => {
+  pagesButton.disabled = true;
+  isStitchRunning = true;
+  setStatus("正在尋找彈窗中的圖片……");
+
+  try {
+    const tab = await getActiveTab();
+
+    const response = await chrome.runtime.sendMessage({
+      type: MESSAGES.capturePages,
+      tabId: tab.id
+    });
+
+    if (response?.ok) {
+      setStatus(`已擷取 ${response.pageCount} 頁，已開啟編輯頁。`);
+    } else {
+      setStatus(response?.error || "翻頁截圖失敗，請重新嘗試。", true);
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "無法啟動翻頁截圖。", true);
+  } finally {
+    pagesButton.disabled = false;
+    isStitchRunning = false;
+  }
+});
+
 settingsButton.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
   window.close();
@@ -108,7 +137,8 @@ function kbd(text) {
 chrome.commands.getAll().then((commands) => {
   const buttons = {
     "capture-visible": captureButton,
-    "capture-full": stitchButton
+    "capture-full": stitchButton,
+    "capture-pages": pagesButton
   };
 
   let menuShortcut = "";

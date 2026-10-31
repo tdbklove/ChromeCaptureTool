@@ -34,6 +34,15 @@
         </svg>
         <span>自動捲動並拼接</span>
       </button>
+
+      <button id="pagesButton" type="button" class="secondary"
+        title="先點開圖片彈窗，再按這裡：自動按「→」鍵逐頁擷取，每頁一張圖">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="5" width="13" height="14" rx="1.5" />
+          <path d="M19 9l3 3-3 3" />
+        </svg>
+        <span>翻頁截圖（彈窗看圖）</span>
+      </button>
     </div>
 
     <!-- 截圖進度與結果；沒有訊息時隱藏 -->
@@ -41,6 +50,7 @@
 
     <ul class="tips">
       <li>先切換到要截取的網頁，再按上方按鈕。</li>
+      <li>圖片要點開彈窗、按「→」鍵才能看下一張時：先點開彈窗，再按「翻頁截圖」，會自動逐頁擷取，每頁一張圖。</li>
       <li><strong>截圖進行中請勿切換分頁、捲動或操作網頁</strong>，否則會拍到錯誤的畫面；長條截圖偵測到切換分頁時會自動停止。</li>
       <li id="shortcutTip">快捷鍵可在下方的設定中修改。</li>
     </ul>

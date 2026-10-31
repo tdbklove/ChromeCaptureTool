@@ -5,6 +5,8 @@ export const state = {
   busy: false,
   // "single"：單張截圖；"stitch"：長條截圖。
   mode: "single",
+  // 單張模式的變化：null 為一般單張截圖；"pages" 為翻頁截圖（每頁一張圖，排在同一張畫布上）。
+  variant: null,
 
   // 截圖來源（Canvas），以及其像素尺寸。所有座標都以這個像素為單位。
   source: null,

@@ -415,9 +415,21 @@ section {
 /* ---------- 小螢幕：改為單欄 ---------- */
 
 @media (max-width: 900px) {
+  /* 單欄時整頁捲動：取消固定高度，讓各區塊依內容撐開 */
+  html,
   body {
+    height: auto;
+  }
+
+  body {
+    min-height: 100vh;
     overflow: auto;
     grid-template-rows: auto auto auto;
+  }
+
+  main,
+  section {
+    min-height: auto;
   }
 
   main {
@@ -431,6 +443,13 @@ section {
 
   .results {
     overflow: visible;
+  }
+
+  /* 單欄時預覽區沒有固定高度，給它一個高度並在區內捲動，避免高度縮成 0、圖片蓋到下方的結果區 */
+  #canvasContainer {
+    flex: none;
+    height: 70vh;
+    min-height: 320px;
   }
 }
 

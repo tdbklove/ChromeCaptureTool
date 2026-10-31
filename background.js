@@ -15,8 +15,10 @@ import {
 
 import {
   checkPageReadyInPage,
+  findMainImageInPage,
   hideFixedElementsInPage,
   prepareScrollTargetInPage,
+  pressArrowRightInPage,
   readViewportStateInPage,
   releaseScrollTargetInPage,
   restoreFixedElementsInPage,
@@ -74,6 +76,8 @@ async function beginTask(name) {
     throw new Error(
       busyTask === "stitch"
         ? "長截圖正在進行中，請等待完成後再試。"
+        : busyTask === "pages"
+        ? "翻頁截圖正在進行中，請等待完成後再試。"
         : "目前已有截圖工作正在執行。"
     );
   }
@@ -262,20 +266,165 @@ async function captureVisible(tab) {
       createdAt: Date.now()
     });
 
-    const editorTab = await chrome.tabs.create({
-      url: editorUrl({ capture: id }),
-      index: tab.index + 1,
-      openerTabId: tab.id
-    });
-
-    // 記錄編輯頁與暫存的對應，編輯頁關閉時自動清除。
-    const stored = await chrome.storage.local.get(STORAGE_KEYS.captureTabs);
-    const captureTabs = stored[STORAGE_KEYS.captureTabs] || {};
-    captureTabs[editorTab.id] = id;
-    await chrome.storage.local.set({ [STORAGE_KEYS.captureTabs]: captureTabs });
+    await openCaptureEditor(tab, id);
 
     return { aligned };
   } finally {
+    endTask();
+  }
+}
+
+// 開啟單張截圖或翻頁截圖的編輯頁，並記錄編輯頁與暫存的對應（編輯頁關閉時自動清除）。
+async function openCaptureEditor(tab, id) {
+  const editorTab = await chrome.tabs.create({
+    url: editorUrl({ capture: id }),
+    index: tab.index + 1,
+    openerTabId: tab.id
+  });
+
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.captureTabs);
+  const captureTabs = stored[STORAGE_KEYS.captureTabs] || {};
+  captureTabs[editorTab.id] = id;
+  await chrome.storage.local.set({ [STORAGE_KEYS.captureTabs]: captureTabs });
+}
+
+// ---- 翻頁截圖（彈窗看圖） ----
+//
+// 適用於點開圖片後以彈窗顯示、要按「→」鍵切換下一張的網頁：
+// 擷取彈窗中的主圖 → 模擬按下「→」鍵 → 等待換成下一張 → 重複，每頁輸出一張圖片。
+
+// 單次最多擷取的頁數，以及所有頁面合計的最大高度（裝置像素，編輯頁的畫布上限）。
+const MAX_PAGES = 60;
+const MAX_PAGES_TOTAL_HEIGHT = 28000;
+
+// 等待翻頁：輪詢間隔、最長等待時間，以及兩次截圖之間的最短間隔（captureVisibleTab 每秒最多 2 次）。
+const PAGE_POLL_MS = 250;
+const PAGE_CHANGE_TIMEOUT_MS = 5000;
+const MIN_CAPTURE_INTERVAL_MS = 600;
+
+// 等待畫面中的主圖穩定（位置連續兩次相同且已載入完成）。
+// previousSignature 有值時，必須換成不同的圖片才算完成；逾時回傳 null。
+async function waitForMainImage(tabId, minSize, previousSignature, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+
+  while (Date.now() < deadline) {
+    const main = await runInPage(tabId, findMainImageInPage, [minSize]);
+
+    const changed = main && main.signature !== previousSignature;
+    const stable = changed && last &&
+      last.signature === main.signature &&
+      Math.abs(last.rect.x - main.rect.x) < 1 &&
+      Math.abs(last.rect.y - main.rect.y) < 1 &&
+      Math.abs(last.rect.width - main.rect.width) < 1 &&
+      Math.abs(last.rect.height - main.rect.height) < 1;
+
+    if (stable && main.complete) {
+      return main;
+    }
+
+    last = changed ? main : null;
+    await wait(PAGE_POLL_MS);
+  }
+
+  return null;
+}
+
+// 從截圖中裁出主圖的範圍（CSS 像素換算為截圖像素）。
+async function cropToRect(blob, rect, innerWidth, innerHeight) {
+  const bitmap = await createImageBitmap(blob);
+
+  try {
+    const scaleX = bitmap.width / innerWidth;
+    const scaleY = bitmap.height / innerHeight;
+
+    const x = Math.max(0, Math.round(rect.x * scaleX));
+    const y = Math.max(0, Math.round(rect.y * scaleY));
+    const width = Math.max(1, Math.min(bitmap.width - x, Math.round(rect.width * scaleX)));
+    const height = Math.max(1, Math.min(bitmap.height - y, Math.round(rect.height * scaleY)));
+
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext("2d").drawImage(bitmap, x, y, width, height, 0, 0, width, height);
+
+    return { blob: await canvas.convertToBlob({ type: "image/png" }), width, height };
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function capturePages(tab) {
+  await beginTask("pages");
+
+  try {
+    const minSize = await detectionMinSize();
+
+    let main = await waitForMainImage(tab.id, minSize, null, 3000);
+
+    if (!main) {
+      throw new Error("畫面中找不到圖片。請先點開要擷取的圖片彈窗，再開始翻頁截圖。");
+    }
+
+    const pages = [];
+    const seen = new Set();
+    let totalHeight = 0;
+    let endReason = "max";
+    let lastCaptureAt = 0;
+
+    for (let index = 0; index < MAX_PAGES; index++) {
+      await setProgress(`正在擷取第 ${index + 1} 頁，請勿切換分頁或操作網頁……`, String(index + 1));
+
+      await wait(Math.max(0, lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - Date.now()));
+
+      await ensureTargetTabActive(tab.id, tab.windowId);
+      const screenshot = await captureTab(tab.windowId);
+      await ensureTargetTabActive(tab.id, tab.windowId);
+      lastCaptureAt = Date.now();
+
+      const page = await cropToRect(screenshot, main.rect, main.innerWidth, main.innerHeight);
+
+      if (pages.length > 0 && totalHeight + page.height > MAX_PAGES_TOTAL_HEIGHT) {
+        endReason = "limit";
+        break;
+      }
+
+      pages.push({ ...page, alt: main.alt });
+      seen.add(main.signature);
+      totalHeight += page.height;
+
+      await runInPage(tab.id, pressArrowRightInPage);
+
+      const next = await waitForMainImage(tab.id, minSize, main.signature, PAGE_CHANGE_TIMEOUT_MS);
+
+      if (!next) {
+        endReason = "no-change";
+        break;
+      }
+
+      if (seen.has(next.signature)) {
+        endReason = "loop";
+        break;
+      }
+
+      main = next;
+    }
+
+    const id = newId("pages");
+
+    await saveCapture({
+      id,
+      mode: "pages",
+      pages,
+      endReason,
+      pageUrl: tab.url || "",
+      pageTitle: tab.title || "",
+      createdAt: Date.now()
+    });
+
+    await openCaptureEditor(tab, id);
+
+    return { pageCount: pages.length, endReason };
+  } finally {
+    await setProgress("", "");
     endTask();
   }
 }
@@ -681,6 +830,8 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
       await captureVisible(tab);
     } else if (command === "capture-full") {
       await startStitch(tab.id, tab.windowId);
+    } else if (command === "capture-pages") {
+      await capturePages(tab);
     }
   } catch (error) {
     console.error("快捷鍵截圖失敗：", error);
@@ -708,6 +859,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.get(message.tabId).then(captureVisible),
         sendResponse,
         "截圖失敗。"
+      );
+
+    case MESSAGES.capturePages:
+      return respond(
+        chrome.tabs.get(message.tabId).then(capturePages),
+        sendResponse,
+        "翻頁截圖失敗。"
       );
 
     case MESSAGES.startStitch:

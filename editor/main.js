@@ -64,7 +64,9 @@ function refreshControls() {
 function applyMode() {
   const stitch = state.mode === "stitch";
 
-  dom.modeBadge.textContent = stitch ? "長條截圖" : "單張截圖";
+  const pages = state.variant === "pages";
+
+  dom.modeBadge.textContent = stitch ? "長條截圖" : (pages ? "翻頁截圖" : "單張截圖");
 
   // 還原按鈕的名稱與提示隨模式改變，讓使用者知道會還原什麼。
   dom.resetAllButton.textContent = stitch ? "還原移除區域" : "還原偵測框";
@@ -86,6 +88,12 @@ function applyMode() {
       "點一下圖片框即可拖曳它的邊線調整範圍。" +
       "在其他位置拖曳可手動框選範圍（藍色框線，框外會變暗），再按「下載手動選取範圍」。";
 
+  if (pages) {
+    dom.previewHint.textContent =
+      "每一頁擷取到的圖片由上到下排列，綠色框線為每一頁的範圍，取消勾選「加入批次下載」的頁面會改為灰色框線。" +
+      "點一下框即可拖曳它的邊線調整範圍；在其他位置拖曳可手動框選範圍（藍色框線）。";
+  }
+
   if (stitch) {
     dom.resultsTitle.textContent = "長圖段落結果";
     dom.resultsInstruction.textContent =
@@ -93,10 +101,11 @@ function applyMode() {
       "過長的組會在間隔處自動分段，紫色線為分段的位置。" +
       "每一段可以單獨下載，或勾選「加入合併」後合併成一張長圖。";
   } else {
-    dom.resultsTitle.textContent = "自動偵測結果";
-    dom.resultsInstruction.textContent =
-      "偵測圖片、影片、畫布、向量圖與背景圖，依網頁由上到下、由左到右排序，預設全部勾選。" +
-      "可以單獨下載，或勾選後批次下載。只會偵測目前畫面可見的部分。";
+    dom.resultsTitle.textContent = pages ? "各頁圖片" : "自動偵測結果";
+    dom.resultsInstruction.textContent = pages
+      ? "每一頁一張圖，依翻頁順序排列，預設全部勾選。可以單獨下載、複製，或勾選後批次下載。"
+      : "偵測圖片、影片、畫布、向量圖與背景圖，依網頁由上到下、由左到右排序，預設全部勾選。" +
+        "可以單獨下載，或勾選後批次下載。只會偵測目前畫面可見的部分。";
   }
 }
 
@@ -142,8 +151,95 @@ function canvasFromBitmap(bitmap) {
   return canvas;
 }
 
+// 翻頁截圖：每頁之間的間距（像素）與底色。
+const PAGE_GAP = 40;
+const PAGE_BACKGROUND = "#e8eaed";
+
+const PAGE_END_MESSAGES = {
+  "no-change": "按「→」鍵後圖片不再變化，判斷為最後一頁。",
+  loop: "已回到看過的圖片，停止擷取。",
+  limit: "已達單次擷取的高度上限，請先下載，再到原網頁從下一頁繼續翻頁截圖。",
+  max: "已達單次最多擷取的頁數，請先下載，再到原網頁從下一頁繼續翻頁截圖。"
+};
+
+// 將各頁圖片由上到下排在同一張畫布上，每頁作為一個項目（沿用單張截圖的清單、下載與複製）。
+async function loadPages(capture) {
+  const pages = capture.pages || [];
+
+  if (pages.length === 0) {
+    throw new Error("沒有擷取到任何頁面，請重新擷取。");
+  }
+
+  const bitmaps = [];
+
+  for (const page of pages) {
+    bitmaps.push(await createImageBitmap(page.blob));
+  }
+
+  const width = Math.max(...bitmaps.map((bitmap) => bitmap.width));
+  const height = bitmaps.reduce((sum, bitmap) => sum + bitmap.height, 0) +
+    PAGE_GAP * (bitmaps.length - 1);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = PAGE_BACKGROUND;
+  ctx.fillRect(0, 0, width, height);
+
+  const items = [];
+  let y = 0;
+
+  bitmaps.forEach((bitmap, index) => {
+    const x = Math.round((width - bitmap.width) / 2);
+    ctx.drawImage(bitmap, x, y);
+
+    const rect = { x, y, width: bitmap.width, height: bitmap.height };
+
+    items.push({
+      ...rect,
+      id: index + 1,
+      kind: "page",
+      alt: pages[index].alt || "",
+      selected: true,
+      original: { ...rect }
+    });
+
+    y += bitmap.height + PAGE_GAP;
+    bitmap.close();
+  });
+
+  state.mode = "single";
+  state.variant = "pages";
+  state.meta = { site: siteNameFromUrl(capture.pageUrl), time: capture.createdAt };
+  document.title = `翻頁截圖：${capture.pageTitle || state.meta.site}`;
+
+  setSource(canvas);
+  state.loaded = true;
+  applyMode();
+
+  state.detectedImages = items;
+
+  drawNow();
+  renderResults();
+
+  let text = `已擷取 ${items.length} 頁。${PAGE_END_MESSAGES[capture.endReason] || ""}`;
+
+  if (items.length === 1 && capture.endReason === "no-change") {
+    text += "如果彈窗其實還有下一張，表示這個網站不支援用「→」鍵翻頁。";
+  }
+
+  setStatus(text);
+}
+
 async function loadSingle(captureId) {
   const capture = await getCapture(captureId);
+
+  if (capture?.mode === "pages") {
+    await loadPages(capture);
+    return;
+  }
 
   if (!capture?.blob) {
     throw new Error("找不到截圖暫存，請重新擷取。");

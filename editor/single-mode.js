@@ -40,11 +40,16 @@ const KIND_LABELS = {
 };
 
 function itemName(item) {
+  if (item.kind === "page") {
+    return `第 ${item.id} 頁`;
+  }
+
   return `${KIND_LABELS[item.kind] || "圖片"} ${item.id}`;
 }
 
 function itemLabel(item) {
-  return `img${String(item.id).padStart(2, "0")}`;
+  const prefix = item.kind === "page" ? "page" : "img";
+  return `${prefix}${String(item.id).padStart(2, "0")}`;
 }
 
 // ---- 繪製 ----
