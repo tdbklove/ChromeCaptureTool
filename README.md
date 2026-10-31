@@ -1,4 +1,4 @@
-# ChromeCaptureTool
+# ChromeCaptureTool（截圖與裁切 - My Screenshot Cropper）
 
 具有單張截圖與長條截圖功能的 Chrome 擴充功能。會自動偵測網頁中的圖片並框選，長條截圖時自動找出廣告、間隔與左右空白作為移除範圍，再輸出成乾淨的長圖。
 
@@ -69,7 +69,7 @@
 2. 在 Chrome 網址列輸入 `chrome://extensions` 並開啟。
 3. 開啟右上角的「**開發人員模式**」。
 4. 按「**載入未封裝項目**」，選擇本專案的資料夾（含有 `manifest.json` 的那一層）。
-5. 建議按工具列的拼圖圖示，將「截圖與裁切」釘選到工具列。
+5. 建議按工具列的拼圖圖示，將「截圖與裁切 - My Screenshot Cropper」釘選到工具列。
 
 更新時，下載新版本覆蓋原資料夾後，回到 `chrome://extensions` 按擴充功能上的「重新載入」（↻）即可。
 
