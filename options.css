@@ -233,3 +233,9 @@ button:focus-visible {
   font-size: 13px;
   color: var(--text-2);
 }
+
+.field input[type="range"] {
+  padding: 0;
+  border: 0;
+  accent-color: var(--primary);
+}

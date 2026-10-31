@@ -12,6 +12,10 @@ const clearFolderButton = document.querySelector("#clearFolderButton");
 const shortcutList = document.querySelector("#shortcutList");
 const shortcutsButton = document.querySelector("#shortcutsButton");
 const status = document.querySelector("#status");
+const formatInputs = document.querySelectorAll("input[name='format']");
+const qualityRow = document.querySelector("#qualityRow");
+const qualityInput = document.querySelector("#qualityInput");
+const qualityValue = document.querySelector("#qualityValue");
 
 const COMMAND_LABELS = {
   _execute_action: "開啟截圖選單",
@@ -30,7 +34,7 @@ function showStatus(text) {
 }
 
 function applyModeUi(mode) {
-  for (const sub of document.querySelectorAll(".sub")) {
+  for (const sub of document.querySelectorAll(".sub[data-for]")) {
     sub.classList.toggle("disabled", sub.dataset.for !== mode);
   }
 }
@@ -56,6 +60,14 @@ async function load() {
   subfolderInput.value = settings.subfolder;
   saveAsInput.checked = settings.saveAs;
   perSiteInput.checked = settings.perSite;
+
+  for (const input of formatInputs) {
+    input.checked = input.value === settings.format;
+  }
+
+  qualityInput.value = String(Math.round(settings.quality * 100));
+  qualityValue.textContent = qualityInput.value;
+  applyFormatUi(settings.format);
   applyModeUi(settings.mode);
 
   const handle = await getHandle(FOLDER_HANDLE_KEY);
@@ -82,6 +94,24 @@ subfolderInput.addEventListener("change", async () => {
 
 saveAsInput.addEventListener("change", () => save({ saveAs: saveAsInput.checked }));
 perSiteInput.addEventListener("change", () => save({ perSite: perSiteInput.checked }));
+
+// PNG 是無損格式，沒有品質可以調整。
+function applyFormatUi(format) {
+  qualityRow.classList.toggle("disabled", format === "png");
+}
+
+for (const input of formatInputs) {
+  input.addEventListener("change", async () => {
+    applyFormatUi(input.value);
+    await save({ format: input.value });
+  });
+}
+
+qualityInput.addEventListener("input", () => {
+  qualityValue.textContent = qualityInput.value;
+});
+
+qualityInput.addEventListener("change", () => save({ quality: Number(qualityInput.value) / 100 }));
 
 pickFolderButton.addEventListener("click", async () => {
   try {

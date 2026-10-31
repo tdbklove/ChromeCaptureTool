@@ -43,6 +43,15 @@
       <!-- 說明文字依單張／長條模式由 editor/main.js 設定 -->
       <p id="previewHint" class="instruction previewHint"></p>
 
+      <!-- 預覽縮放：也可以在預覽區按住 Ctrl 並滾動滑鼠滾輪 -->
+      <div class="zoomBar" role="group" aria-label="預覽縮放">
+        <button id="zoomOutButton" type="button" class="secondary" title="縮小（Ctrl＋滾輪向下）">－</button>
+        <span id="zoomLabel" class="zoomLabel">符合寬度</span>
+        <button id="zoomInButton" type="button" class="secondary" title="放大（Ctrl＋滾輪向上）">＋</button>
+        <button id="zoomFitButton" type="button" class="secondary" title="縮放到符合預覽區寬度">符合寬度</button>
+        <button id="zoomActualButton" type="button" class="secondary" title="以實際大小（100%）顯示">實際大小</button>
+      </div>
+
       <div id="canvasContainer">
         <!-- 底層為截圖本身，上層為標示圖層（偵測框、移除區域、選取框） -->
         <div id="canvasStage">
@@ -104,6 +113,7 @@
           <button id="mergeDownloadButton" type="button" class="secondary" disabled
             title="把勾選「加入合併」的段落依序接成一張長圖（移除區域已排除）">合併勾選的段落（0）</button>
         </div>
+        <p id="mergeWarning" class="mergeWarning" role="alert" hidden></p>
         <div class="groupButtons">
           <button id="selectAllPartsButton" type="button" class="secondary"
             title="所有段落都加入合併">全選段落</button>
@@ -136,5 +146,18 @@
       </div>
     </section>
   </main>
+
+  <!-- 合併長圖超過高度上限時的確認視窗 -->
+  <dialog id="mergeDialog" class="dialog">
+    <form method="dialog">
+      <h2>超出合併高度上限</h2>
+      <p id="mergeDialogMessage"></p>
+      <p id="mergeDialogDetail" class="dialogDetail"></p>
+      <div class="dialogButtons">
+        <button value="cancel" type="submit" class="secondary">取消</button>
+        <button id="mergeDialogConfirm" value="split" type="submit" class="primary">分成多張下載</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

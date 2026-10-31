@@ -2,6 +2,7 @@
 
 import { MESSAGES } from "../lib/constants.js";
 import { getFrames } from "../lib/db.js";
+import { outputFormat } from "../lib/settings.js";
 import {
   chooseBatchEnd,
   clamp,
@@ -16,7 +17,9 @@ import {
   describeDownload,
   downloadItems,
   makeThumbnail,
-  revokePreviewUrls
+  mergeHeightLimit,
+  revokePreviewUrls,
+  splitByHeight
 } from "./output.js";
 import { state } from "./state.js";
 
@@ -744,6 +747,7 @@ export async function renderStitchGroups() {
 
     const card = document.createElement("article");
     card.className = "resultCard";
+    card.dataset.partRow = String(index);
 
     const heading = document.createElement("h3");
     heading.textContent = `第 ${number} 段`;
@@ -876,6 +880,7 @@ function renderPartList() {
     const rect = partRect(part);
     const row = document.createElement("label");
     row.className = "selectRow";
+    row.dataset.partRow = String(index);
     row.title = "勾選＝加入合併";
     row.append(
       createPartCheckbox(part, index),
@@ -903,15 +908,113 @@ function includedParts() {
     .filter(({ part }) => isPartIncluded(part));
 }
 
+// 彈窗說明超出合併高度上限，回傳使用者是否同意分成多張下載。
+function confirmSplitMerge(plan) {
+  const format = outputFormat(state.settings).label;
+  const heights = plan.chunks
+    .map((rects) => rects.reduce((sum, rect) => sum + rect.height, 0).toLocaleString())
+    .join("、");
+
+  dom.mergeDialogMessage.textContent =
+    `勾選的 ${plan.selected.length} 段合計 ${plan.totalHeight.toLocaleString()}px，` +
+    `超過 ${format} 單張圖片的高度上限 ${plan.limit.toLocaleString()}px，無法合併成一張。`;
+
+  dom.mergeDialogDetail.textContent =
+    `繼續合併時會自動分成 ${plan.chunks.length} 張圖片下載（高度分別為 ${heights}px），` +
+    "每張都會在段落的交界處切開。";
+
+  dom.mergeDialogConfirm.textContent = `分成 ${plan.chunks.length} 張下載`;
+
+  // 直接由按鈕回傳結果（不依賴 close 事件，在背景分頁中它可能延後觸發）；按 Esc 視為取消。
+  return new Promise((resolve) => {
+    const buttons = dom.mergeDialog.querySelectorAll("button[value]");
+
+    const finish = (value) => {
+      buttons.forEach((button) => button.removeEventListener("click", onClick));
+      dom.mergeDialog.removeEventListener("cancel", onCancel);
+
+      if (dom.mergeDialog.open) {
+        dom.mergeDialog.close(value);
+      }
+
+      resolve(value === "split");
+    };
+
+    const onClick = (event) => {
+      event.preventDefault();
+      finish(event.currentTarget.value);
+    };
+
+    const onCancel = (event) => {
+      event.preventDefault();
+      finish("cancel");
+    };
+
+    buttons.forEach((button) => button.addEventListener("click", onClick));
+    dom.mergeDialog.addEventListener("cancel", onCancel);
+    dom.mergeDialog.showModal();
+  });
+}
+
+// 合併勾選段落的規劃：總高度、目前格式的高度上限，以及超過上限時要分成幾張。
+function planMerge() {
+  const selected = includedParts();
+  const rects = selected.map(({ part }) => partRect(part));
+  const width = rects[0]?.width ?? outputXRange().width;
+  const totalHeight = rects.reduce((sum, rect) => sum + rect.height, 0);
+  const limit = mergeHeightLimit(width);
+  const chunks = splitByHeight(rects, limit);
+
+  return {
+    selected,
+    rects,
+    width,
+    totalHeight,
+    limit,
+    chunks,
+    overLimit: totalHeight > limit
+  };
+}
+
+// 勾選的段落合計超過上限時：已勾選的項目（清單與卡片）以紅色底色標示，並顯示提醒。
+function updateMergeWarning(plan) {
+  const included = new Set(plan.selected.map(({ number }) => number - 1));
+
+  document.querySelectorAll("[data-part-row]").forEach((element) => {
+    element.classList.toggle(
+      "overLimit",
+      plan.overLimit && included.has(Number(element.dataset.partRow))
+    );
+  });
+
+  dom.mergeWarning.hidden = !plan.overLimit;
+
+  if (plan.overLimit) {
+    const format = outputFormat(state.settings).label;
+
+    dom.mergeWarning.textContent =
+      `勾選的段落合計 ${plan.totalHeight.toLocaleString()}px，` +
+      `超過 ${format} 單張圖片的高度上限 ${plan.limit.toLocaleString()}px。` +
+      `合併時會自動分成 ${plan.chunks.length} 張圖片下載；` +
+      "也可以減少勾選的段落，或在「下載設定」改用其他格式。";
+  }
+}
+
 export function refreshStitchControls() {
   const busy = state.busy || !state.loaded;
-  const includedCount = includedParts().length;
+  const plan = planMerge();
+  const includedCount = plan.selected.length;
 
   dom.downloadAllGroupsButton.textContent = `下載全部段落（${state.stitchParts.length}）`;
   dom.downloadAllGroupsButton.disabled = busy || state.stitchParts.length === 0;
 
-  dom.mergeDownloadButton.textContent = `合併勾選的段落（${includedCount}）`;
+  dom.mergeDownloadButton.textContent = plan.overLimit
+    ? `合併勾選的段落（${includedCount}，將分為 ${plan.chunks.length} 張）`
+    : `合併勾選的段落（${includedCount}）`;
   dom.mergeDownloadButton.disabled = busy || includedCount === 0;
+  dom.mergeDownloadButton.classList.toggle("warning", plan.overLimit);
+
+  updateMergeWarning(plan);
 
   dom.selectAllPartsButton.disabled = busy || state.stitchParts.length === 0;
   dom.deselectAllPartsButton.disabled = busy || state.stitchParts.length === 0;
@@ -1021,10 +1124,17 @@ export function initStitchMode(refreshControls) {
   });
 
   dom.mergeDownloadButton.addEventListener("click", async () => {
-    const selected = includedParts();
+    const plan = planMerge();
+    const { selected } = plan;
 
     if (selected.length === 0) {
       setStatus("請先在段落中勾選「加入合併」。");
+      return;
+    }
+
+    // 超過高度上限：先彈窗說明，使用者確認後才自動分成多張。
+    if (plan.overLimit && !(await confirmSplitMerge(plan))) {
+      setStatus("已取消合併。可以減少勾選的段落，或在「下載設定」改用其他格式。");
       return;
     }
 
@@ -1033,26 +1143,40 @@ export function initStitchMode(refreshControls) {
     setStatus(`正在合併 ${selected.length} 段長圖……`);
 
     try {
-      const rects = selected.map(({ part }) => partRect(part));
       const allSelected = selected.length === state.stitchParts.length;
 
       // 全部合併時檔名為 merged；只合併部分段落時，檔名加上段落編號，例如 merged_p01-p03-p04。
-      const label = allSelected
+      const base = allSelected
         ? `long_b${state.stitchInfo.batchIndex}_merged`
         : `long_b${state.stitchInfo.batchIndex}_merged_` +
           selected.map(({ number }) => `p${String(number).padStart(2, "0")}`).join("-");
 
-      const result = await downloadItems([{ label, rects }]);
+      // 分成多張時，檔名加上「_1of3」等張數。
+      const items = plan.chunks.map((rects, index) => ({
+        label: plan.chunks.length > 1 ? `${base}_${index + 1}of${plan.chunks.length}` : base,
+        rects
+      }));
 
-      const totalHeight = rects.reduce((sum, rect) => sum + rect.height, 0);
+      const result = await downloadItems(
+        items,
+        (index, total) => total > 1 && setStatus(`正在合併並儲存第 ${index + 1} ／ ${total} 張……`)
+      );
+
       const numbers = selected.map(({ number }) => number).join("、");
 
-      setStatus(
-        result.failed === 0
-          ? `已將第 ${numbers} 段合併為一張長圖（${rects[0].width} × ${totalHeight}px）。` +
-            describeDownload(result, "張")
-          : "合併下載失敗，圖片可能過大，請減少勾選的段落，或改用「下載全部段落」。"
-      );
+      if (result.failed > 0) {
+        setStatus("合併下載失敗，請減少勾選的段落，或改用「下載全部段落」。");
+      } else if (items.length > 1) {
+        setStatus(
+          `已將第 ${numbers} 段合併，因超過高度上限分為 ${items.length} 張圖片。` +
+          describeDownload(result, "張")
+        );
+      } else {
+        setStatus(
+          `已將第 ${numbers} 段合併為一張長圖（${plan.width} × ${plan.totalHeight}px）。` +
+          describeDownload(result, "張")
+        );
+      }
     } finally {
       state.busy = false;
       refreshControls();

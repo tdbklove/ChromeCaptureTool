@@ -66,9 +66,44 @@
       </label>
 
       <p class="help">
-        檔名格式：網站_截圖時間_編號.png，例如 example.com_20261031-142530_img01.png，
-        不同次截圖不會互相覆蓋。
+        檔名格式：網站_截圖時間_編號，例如 example.com_20261031-142530_img01.png，不同次截圖不會互相覆蓋。
       </p>
+    </section>
+
+    <section class="card">
+      <h2>圖片格式</h2>
+
+      <label class="option">
+        <input type="radio" name="format" value="png">
+        <span>
+          <strong>PNG（無損）</strong>
+          <small>畫質完全不變，檔案最大。長圖可能達數十 MB。</small>
+        </span>
+      </label>
+
+      <label class="option">
+        <input type="radio" name="format" value="jpeg">
+        <span>
+          <strong>JPEG</strong>
+          <small>檔案小、相容性最好，適合照片與長圖；文字邊緣可能略有雜訊。</small>
+        </span>
+      </label>
+
+      <label class="option">
+        <input type="radio" name="format" value="webp">
+        <span>
+          <strong>WebP</strong>
+          <small>同畫質下檔案最小。單張圖片高度上限為 16,383 像素，合併長圖時較容易需要分成多張。</small>
+        </span>
+      </label>
+
+      <div id="qualityRow" class="sub">
+        <label class="field">
+          <span>品質：<output id="qualityValue">90</output></span>
+          <input id="qualityInput" type="range" min="50" max="100" step="5">
+        </label>
+        <p class="help">數值越高畫質越好、檔案越大。建議 80～90。</p>
+      </div>
     </section>
 
     <section class="card">

@@ -36,6 +36,19 @@ export const dom = {
   addCutButton: $("#addCutButton"),
   downloadAllGroupsButton: $("#downloadAllGroupsButton"),
   mergeDownloadButton: $("#mergeDownloadButton"),
+  mergeWarning: $("#mergeWarning"),
+  mergeDialog: $("#mergeDialog"),
+  mergeDialogMessage: $("#mergeDialogMessage"),
+  mergeDialogDetail: $("#mergeDialogDetail"),
+  mergeDialogConfirm: $("#mergeDialogConfirm"),
+
+  // 預覽縮放
+  zoomOutButton: $("#zoomOutButton"),
+  zoomInButton: $("#zoomInButton"),
+  zoomLabel: $("#zoomLabel"),
+  zoomFitButton: $("#zoomFitButton"),
+  zoomActualButton: $("#zoomActualButton"),
+
   selectAllPartsButton: $("#selectAllPartsButton"),
   deselectAllPartsButton: $("#deselectAllPartsButton"),
 

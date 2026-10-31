@@ -3,8 +3,16 @@
 import { STORAGE_KEYS } from "../lib/constants.js";
 import { getCapture } from "../lib/db.js";
 import { siteNameFromUrl, timestampText } from "../lib/downloads.js";
+import { DEFAULT_DOWNLOAD_SETTINGS, getDownloadSettings } from "../lib/settings.js";
 import { buildDetections } from "../lib/stitch-plan.js";
-import { drawNow, requestDraw, setOverlayDrawer, setSource } from "./canvas.js";
+import {
+  drawNow,
+  initZoom,
+  requestDraw,
+  setOverlayDrawer,
+  setSource,
+  updateZoomControls
+} from "./canvas.js";
 import { dom, setStatus } from "./dom.js";
 import { initInteraction } from "./interaction.js";
 import { describeDownload, downloadItems, revokePreviewUrls } from "./output.js";
@@ -38,6 +46,7 @@ const SELECTION_COLOR = "#00a8ff";
 function refreshControls() {
   refreshSingleControls();
   refreshStitchControls();
+  updateZoomControls();
 }
 
 function applyMode() {
@@ -279,11 +288,20 @@ dom.settingsButton.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
 
-// 繼續截圖時，背景程式的進度文字顯示在狀態列。
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[STORAGE_KEYS.progress]) return;
+  if (area !== "local") return;
 
-  const text = changes[STORAGE_KEYS.progress].newValue?.text;
+  // 在設定頁修改輸出格式時，合併長圖的高度上限也會跟著改變。
+  if (changes[STORAGE_KEYS.downloadSettings]) {
+    state.settings = {
+      ...DEFAULT_DOWNLOAD_SETTINGS,
+      ...(changes[STORAGE_KEYS.downloadSettings].newValue || {})
+    };
+    refreshControls();
+  }
+
+  // 繼續截圖時，背景程式的進度文字顯示在狀態列。
+  const text = changes[STORAGE_KEYS.progress]?.newValue?.text;
 
   if (state.busy && text) {
     setStatus(text);
@@ -296,4 +314,11 @@ setOverlayDrawer(drawOverlay);
 initSingleMode(refreshControls);
 initStitchMode(refreshControls);
 initInteraction();
-load();
+initZoom();
+
+getDownloadSettings()
+  .catch(() => ({ ...DEFAULT_DOWNLOAD_SETTINGS }))
+  .then((settings) => {
+    state.settings = settings;
+    return load();
+  });

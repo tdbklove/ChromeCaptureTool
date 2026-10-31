@@ -14,6 +14,12 @@ export const state = {
   // 檔名使用的網站名稱與截圖時間。
   meta: { site: "page", time: Date.now() },
 
+  // 下載設定（輸出格式會影響合併長圖的高度上限）；設定頁修改時會即時更新。
+  settings: null,
+
+  // 預覽縮放：null 表示符合預覽區寬度，數字表示相對於實際大小的比例（1 = 100%）。
+  zoom: null,
+
   // ---- 手動選取 ----
   selection: null,
   startPoint: null,

@@ -35,7 +35,7 @@ export function setSource(sourceCanvas) {
   state.width = sourceCanvas.width;
   state.height = sourceCanvas.height;
 
-  resizeOverlay();
+  applyZoom();
 }
 
 function resizeOverlay() {
@@ -133,3 +133,103 @@ export function visibleRange() {
 // 預覽區捲動時，控制點要跟著畫在看得到的位置。
 dom.stage.parentElement.addEventListener("scroll", requestDraw, { passive: true });
 window.addEventListener("scroll", requestDraw, { passive: true });
+
+// ---- 預覽縮放 ----
+
+const ZOOM_STEPS = [0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+
+// 「實際大小」（100%）時的 CSS 寬度：截圖的一個像素對應螢幕上的一個像素。
+function actualCssWidth() {
+  return state.width / (window.devicePixelRatio || 1);
+}
+
+function currentZoom() {
+  if (state.zoom != null) return state.zoom;
+
+  const width = state.source ? state.source.getBoundingClientRect().width : 0;
+  return width > 0 ? width / actualCssWidth() : 1;
+}
+
+export function updateZoomControls() {
+  const zoom = currentZoom();
+  const percent = `${Math.round(zoom * 100)}%`;
+
+  dom.zoomLabel.textContent = state.zoom == null ? `符合寬度（${percent}）` : percent;
+  dom.zoomOutButton.disabled = !state.loaded || zoom <= ZOOM_STEPS[0] + 0.001;
+  dom.zoomInButton.disabled = !state.loaded || zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001;
+  dom.zoomFitButton.disabled = !state.loaded || state.zoom == null;
+  dom.zoomActualButton.disabled = !state.loaded || state.zoom === 1;
+}
+
+// 依 state.zoom 設定截圖的顯示大小。null 表示符合預覽區寬度。
+export function applyZoom() {
+  if (!state.source) return;
+
+  if (state.zoom == null) {
+    state.source.style.width = "";
+    state.source.style.maxWidth = "100%";
+    dom.stage.style.maxWidth = "100%";
+  } else {
+    state.source.style.width = `${actualCssWidth() * state.zoom}px`;
+    state.source.style.maxWidth = "none";
+    dom.stage.style.maxWidth = "none";
+  }
+
+  resizeOverlay();
+  updateZoomControls();
+}
+
+// 設定縮放比例。anchor 為滑鼠位置時，縮放後該位置下的截圖內容維持在滑鼠下方。
+export function setZoom(zoom, anchor) {
+  if (!state.loaded) return;
+
+  const container = dom.stage.parentElement;
+  const before = anchor ? getCanvasPoint(anchor) : null;
+
+  state.zoom = zoom == null
+    ? null
+    : Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.max(ZOOM_STEPS[0], zoom));
+
+  applyZoom();
+
+  if (before) {
+    const rect = dom.overlay.getBoundingClientRect();
+    const clientX = rect.left + (before.x * rect.width) / state.width;
+    const clientY = rect.top + (before.y * rect.height) / state.height;
+
+    container.scrollLeft += clientX - anchor.clientX;
+    container.scrollTop += clientY - anchor.clientY;
+  }
+}
+
+function stepZoom(direction, anchor) {
+  const zoom = currentZoom();
+
+  const next = direction > 0
+    ? ZOOM_STEPS.find((step) => step > zoom + 0.001)
+    : [...ZOOM_STEPS].reverse().find((step) => step < zoom - 0.001);
+
+  if (next != null) {
+    setZoom(next, anchor);
+  }
+}
+
+export function initZoom() {
+  dom.zoomInButton.addEventListener("click", () => stepZoom(1));
+  dom.zoomOutButton.addEventListener("click", () => stepZoom(-1));
+  dom.zoomFitButton.addEventListener("click", () => setZoom(null));
+  dom.zoomActualButton.addEventListener("click", () => setZoom(1));
+
+  // 在預覽區按住 Ctrl 並滾動滑鼠滾輪：以滑鼠位置為中心縮放。
+  dom.stage.parentElement.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey || !state.loaded) return;
+
+    event.preventDefault();
+    stepZoom(event.deltaY < 0 ? 1 : -1, event);
+  }, { passive: false });
+
+  // 符合寬度時，視窗大小改變會影響實際比例，需要更新顯示的百分比。
+  window.addEventListener("resize", updateZoomControls);
+
+  updateZoomControls();
+}

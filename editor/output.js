@@ -1,6 +1,7 @@
 // 輸出：裁切、預覽縮圖與下載。
 
 import { buildFilename, prepareDownloadTarget, saveBlob } from "../lib/downloads.js";
+import { maxOutputHeight, outputFormat } from "../lib/settings.js";
 import { state } from "./state.js";
 
 // 預覽縮圖的最大寬度（像素）。只用於顯示，不影響下載的原圖品質。
@@ -56,8 +57,12 @@ function composeCanvas(rects, scale = 1) {
   return output;
 }
 
-export function cropToBlob(rects) {
-  return canvasToBlob(composeCanvas(Array.isArray(rects) ? rects : [rects]));
+// 依下載設定的格式與品質產生圖片。
+export function cropToBlob(rects, settings) {
+  const format = outputFormat(settings);
+  const canvas = composeCanvas(Array.isArray(rects) ? rects : [rects]);
+
+  return canvasToBlob(canvas, format.mime, format.lossy ? settings.quality : undefined);
 }
 
 // 產生預覽縮圖（JPEG，比完整 PNG 快很多），回傳 Blob。
@@ -66,8 +71,42 @@ export function makeThumbnail(rect) {
   return canvasToBlob(composeCanvas([rect], scale), "image/jpeg", 0.85);
 }
 
-export function filenameFor(label) {
-  return buildFilename({ site: state.meta.site, time: state.meta.time, label });
+export function filenameFor(label, settings) {
+  return buildFilename({
+    site: state.meta.site,
+    time: state.meta.time,
+    label,
+    ext: outputFormat(settings).ext
+  });
+}
+
+// 依目前的輸出格式，計算合併時一張圖最多能有多高（像素）。
+export function mergeHeightLimit(width) {
+  return maxOutputHeight(state.settings, width);
+}
+
+// 依序把範圍分組，每組的總高度不超過 limit（單一範圍本身超過時自成一組）。
+export function splitByHeight(rects, limit) {
+  const chunks = [];
+  let current = [];
+  let height = 0;
+
+  for (const rect of rects) {
+    if (current.length > 0 && height + rect.height > limit) {
+      chunks.push(current);
+      current = [];
+      height = 0;
+    }
+
+    current.push(rect);
+    height += rect.height;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
 }
 
 // 依下載設定儲存多個檔案。items：[{ label, rects }]。
@@ -84,8 +123,13 @@ export async function downloadItems(items, onProgress) {
     onProgress?.(index, items.length);
 
     try {
-      const blob = await cropToBlob(item.rects);
-      location = await saveBlob(target, blob, filenameFor(item.label), state.meta.site);
+      const blob = await cropToBlob(item.rects, target.settings);
+      location = await saveBlob(
+        target,
+        blob,
+        filenameFor(item.label, target.settings),
+        state.meta.site
+      );
       saved++;
     } catch (error) {
       failed++;
