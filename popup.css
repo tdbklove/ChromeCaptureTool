@@ -235,3 +235,13 @@ button.danger:hover:not(:disabled) {
 button[hidden] {
   display: none;
 }
+
+/* 「未設定」可以點擊，開啟快捷鍵設定頁 */
+button kbd.unset {
+  cursor: pointer;
+}
+
+button kbd.unset:hover {
+  opacity: 1;
+  text-decoration: underline;
+}

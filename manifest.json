@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "My Screenshot Cropper",
-  "version": "1.17.2",
+  "version": "1.17.3",
   "description": "截圖、圖片偵測、自動捲動與長圖拼接。",
   "minimum_chrome_version": "116",
   "icons": {

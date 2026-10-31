@@ -967,18 +967,38 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
     }
   } catch (error) {
     console.error("快捷鍵截圖失敗：", error);
-    await showBadgeError(error.message || "截圖失敗。");
+    await showBadgeError(friendlyError(error, "截圖失敗。"));
   }
 });
 
 // ---- 訊息 ----
+
+// Chrome 回傳的英文錯誤改為使用者看得懂的說明（例如在 chrome:// 頁面上截圖）。
+function friendlyError(error, fallbackMessage) {
+  const message = error?.message || "";
+
+  if (/chrome:\/\/|chrome-extension:\/\/|edge:\/\/|about:|extensions gallery|Chrome Web Store|cannot be scripted/i.test(message)) {
+    return "這個頁面無法截圖：Chrome 不允許擴充功能擷取內建頁面（網址以 chrome:// 開頭）、" +
+      "線上應用程式商店與其他擴充功能的頁面。請切換到一般網頁再試。";
+  }
+
+  if (/Cannot access contents|Missing host permission|activeTab/i.test(message)) {
+    return "目前沒有存取這個頁面的權限（網頁可能已重新整理或換頁）。請在網頁上重新按一次工具列圖示或快捷鍵。";
+  }
+
+  if (/No tab with id|Tabs cannot be edited/i.test(message)) {
+    return "找不到目標分頁，可能已經關閉。請重新開始截圖。";
+  }
+
+  return message || fallbackMessage;
+}
 
 function respond(promise, sendResponse, fallbackMessage) {
   promise
     .then((result) => sendResponse({ ok: true, ...(result || {}) }))
     .catch((error) => {
       console.error(fallbackMessage, error);
-      sendResponse({ ok: false, error: error.message || fallbackMessage });
+      sendResponse({ ok: false, error: friendlyError(error, fallbackMessage) });
     });
 
   return true;

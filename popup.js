@@ -204,6 +204,18 @@ chrome.commands.getAll().then((commands) => {
 
     const hint = kbd(command.shortcut || "未設定");
     hint.classList.toggle("unset", !command.shortcut);
+
+    // 點「未設定」直接開啟 Chrome 的快捷鍵設定頁（不會觸發按鈕本身的截圖）。
+    if (!command.shortcut) {
+      hint.title = "點這裡設定快捷鍵";
+      hint.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+        window.close();
+      });
+    }
+
     button.appendChild(hint);
 
     missing ||= !command.shortcut;
