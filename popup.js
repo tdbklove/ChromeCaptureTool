@@ -88,19 +88,34 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 // 在按鈕上顯示目前設定的快捷鍵，方便使用者記住。
+// 快捷鍵與其他擴充功能衝突時，Chrome 不會指派，此時顯示「未設定」並提示到設定頁設定。
 chrome.commands.getAll().then((commands) => {
   const labels = {
     "capture-visible": captureButton,
     "capture-full": stitchButton
   };
 
+  let missing = false;
+
   for (const command of commands) {
     const button = labels[command.name];
 
-    if (button && command.shortcut) {
-      const hint = document.createElement("kbd");
+    if (!button) continue;
+
+    const hint = document.createElement("kbd");
+
+    if (command.shortcut) {
       hint.textContent = command.shortcut;
-      button.appendChild(hint);
+    } else {
+      hint.textContent = "未設定";
+      hint.classList.add("unset");
+      missing = true;
     }
+
+    button.appendChild(hint);
+  }
+
+  if (missing) {
+    status.textContent = "有快捷鍵尚未設定（可能與其他擴充功能衝突），可按下方「下載位置與快捷鍵設定」設定。";
   }
 });

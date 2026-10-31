@@ -137,6 +137,11 @@ button kbd {
   border-radius: 4px;
 }
 
+button kbd.unset {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
 /* 文字連結樣式的按鈕 */
 button.link {
   width: auto;

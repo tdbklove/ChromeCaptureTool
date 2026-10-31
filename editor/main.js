@@ -55,12 +55,21 @@ function applyMode() {
   dom.stitchBatchControls.hidden = !stitch;
   dom.sessionControls.hidden = !stitch;
 
+  // 預覽區的說明：只描述目前模式中實際會出現的顏色與操作。
+  dom.previewHint.textContent = stitch
+    ? "紅色區域為會被移除的範圍（上下的間隔與左右的空白），黃色虛線為保留的範圍，點一下即可切換移除或保留。" +
+      "拖曳紅色區域的上下邊線可調整範圍，左右兩側的邊線可左右拖曳。" +
+      "在其他位置拖曳可手動框選範圍（藍色框線，框外會變暗），再按「下載手動選取範圍」。"
+    : "綠色框線為偵測到的圖片，取消勾選「加入批次下載」的圖片會改為灰色框線。" +
+      "點一下圖片框即可拖曳它的邊線調整範圍。" +
+      "在其他位置拖曳可手動框選範圍（藍色框線，框外會變暗），再按「下載手動選取範圍」。";
+
   if (stitch) {
     dom.resultsTitle.textContent = "長圖段落結果";
     dom.resultsInstruction.textContent =
-      "紅色區域為會被移除的範圍（上下間隔與左右空白），黃色虛線為保留的範圍。" +
-      "點擊預覽區的區域，或在下方勾選，即可切換移除與保留。" +
-      "紫色標記為段落起點，段落的結束點會優先落在分隔處。";
+      "移除區域會把長圖分成多組，預覽區的藍色線為每一組的起點；" +
+      "過長的組會在間隔處自動分段，紫色線為分段的位置。" +
+      "每一段可以單獨下載，或勾選「加入合併」後合併成一張長圖。";
   } else {
     dom.resultsTitle.textContent = "自動偵測結果";
     dom.resultsInstruction.textContent =

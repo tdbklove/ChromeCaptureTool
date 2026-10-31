@@ -766,6 +766,21 @@ export async function renderStitchGroups() {
       card.appendChild(note);
     }
 
+    const mergeLabel = document.createElement("label");
+    mergeLabel.className = "selectRow";
+
+    const mergeCheckbox = document.createElement("input");
+    mergeCheckbox.type = "checkbox";
+    mergeCheckbox.checked = isPartIncluded(part);
+
+    mergeCheckbox.addEventListener("change", () => {
+      setPartIncluded(part, mergeCheckbox.checked);
+      refreshStitchControls();
+    });
+
+    mergeLabel.append(mergeCheckbox, " 加入合併");
+    card.appendChild(mergeLabel);
+
     const downloadButton = document.createElement("button");
     downloadButton.type = "button";
     downloadButton.textContent = "下載此段長圖";
@@ -805,12 +820,65 @@ export async function renderStitchGroups() {
   refreshStitchControls();
 }
 
+// ---- 段落是否加入合併 ----
+
+function partCenter(part) {
+  return (part.startY + part.endY) / 2;
+}
+
+function isPartIncluded(part) {
+  const center = partCenter(part);
+
+  return !state.excludedPartRanges.some(
+    (range) => center >= range.startY && center < range.endY
+  );
+}
+
+function setPartIncluded(part, included) {
+  const center = partCenter(part);
+
+  state.excludedPartRanges = state.excludedPartRanges.filter(
+    (range) => !(center >= range.startY && center < range.endY)
+  );
+
+  if (!included) {
+    state.excludedPartRanges.push({ startY: part.startY, endY: part.endY });
+  }
+}
+
+function setAllPartsIncluded(included) {
+  state.excludedPartRanges = included
+    ? []
+    : state.stitchParts.map((part) => ({ startY: part.startY, endY: part.endY }));
+
+  dom.resultsContainer
+    .querySelectorAll(".resultCard input[type='checkbox']")
+    .forEach((checkbox) => {
+      checkbox.checked = included;
+    });
+
+  refreshStitchControls();
+}
+
+// 勾選「加入合併」的段落（依由上到下的順序），以及它們的段落編號。
+function includedParts() {
+  return state.stitchParts
+    .map((part, index) => ({ part, number: index + 1 }))
+    .filter(({ part }) => isPartIncluded(part));
+}
+
 export function refreshStitchControls() {
   const busy = state.busy || !state.loaded;
+  const includedCount = includedParts().length;
 
   dom.downloadAllGroupsButton.textContent = `下載全部段落（${state.stitchParts.length}）`;
   dom.downloadAllGroupsButton.disabled = busy || state.stitchParts.length === 0;
-  dom.mergeDownloadButton.disabled = busy || state.stitchGroups.length === 0;
+
+  dom.mergeDownloadButton.textContent = `合併勾選的段落（${includedCount}）`;
+  dom.mergeDownloadButton.disabled = busy || includedCount === 0;
+
+  dom.selectAllPartsButton.disabled = busy || state.stitchParts.length === 0;
+  dom.deselectAllPartsButton.disabled = busy || state.stitchParts.length === 0;
 
   const isCurrent = state.session !== null && state.session.jobId === state.jobId;
   const hasNextBatch = isCurrent && state.nextStartY != null;
@@ -828,6 +896,7 @@ export function refreshStitchControls() {
 export function resetCuts() {
   state.cutOverrides = new Map();
   state.customCuts = [];
+  state.excludedPartRanges = [];
   state.addCutMode = false;
   updateAddCutButton();
 
@@ -838,6 +907,16 @@ export function resetCuts() {
 }
 
 export function initStitchMode(refreshControls) {
+  dom.selectAllPartsButton.addEventListener("click", () => {
+    setAllPartsIncluded(true);
+    setStatus(`已將全部 ${state.stitchParts.length} 段加入合併。`);
+  });
+
+  dom.deselectAllPartsButton.addEventListener("click", () => {
+    setAllPartsIncluded(false);
+    setStatus("已取消所有段落的「加入合併」。");
+  });
+
   dom.addCutButton.addEventListener("click", () => {
     state.addCutMode = !state.addCutMode;
     updateAddCutButton();
@@ -906,32 +985,37 @@ export function initStitchMode(refreshControls) {
   });
 
   dom.mergeDownloadButton.addEventListener("click", async () => {
-    if (state.stitchGroups.length === 0) return;
+    const selected = includedParts();
+
+    if (selected.length === 0) {
+      setStatus("請先在段落中勾選「加入合併」。");
+      return;
+    }
 
     state.busy = true;
     refreshControls();
-    setStatus("正在合併長圖……");
+    setStatus(`正在合併 ${selected.length} 段長圖……`);
 
     try {
-      const { x, width } = outputXRange();
-      const rects = state.stitchGroups.map((group) => ({
-        x,
-        y: group.startY,
-        width,
-        height: group.endY - group.startY
-      }));
+      const rects = selected.map(({ part }) => partRect(part));
+      const allSelected = selected.length === state.stitchParts.length;
 
-      const result = await downloadItems([{
-        label: `long_b${state.stitchInfo.batchIndex}_merged`,
-        rects
-      }]);
+      // 全部合併時檔名為 merged；只合併部分段落時，檔名加上段落編號，例如 merged_p01-p03-p04。
+      const label = allSelected
+        ? `long_b${state.stitchInfo.batchIndex}_merged`
+        : `long_b${state.stitchInfo.batchIndex}_merged_` +
+          selected.map(({ number }) => `p${String(number).padStart(2, "0")}`).join("-");
+
+      const result = await downloadItems([{ label, rects }]);
 
       const totalHeight = rects.reduce((sum, rect) => sum + rect.height, 0);
+      const numbers = selected.map(({ number }) => number).join("、");
 
       setStatus(
         result.failed === 0
-          ? `已合併為一張長圖（${width} × ${totalHeight}px）。` + describeDownload(result, "張")
-          : "合併下載失敗，圖片可能過大，請改用「下載全部段落」。"
+          ? `已將第 ${numbers} 段合併為一張長圖（${rects[0].width} × ${totalHeight}px）。` +
+            describeDownload(result, "張")
+          : "合併下載失敗，圖片可能過大，請減少勾選的段落，或改用「下載全部段落」。"
       );
     } finally {
       state.busy = false;

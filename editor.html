@@ -40,10 +40,8 @@
           title="下載目前手動選取的範圍（不是偵測框）">下載手動選取範圍</button>
       </div>
 
-      <p class="instruction previewHint">
-        綠色框線為偵測到且已勾選的圖片，灰色為未勾選。在預覽區拖曳可以手動框出範圍；
-        拖曳框的邊線可以調整大小。長條截圖中，紅色區域為會被移除的範圍，左右兩側的邊線可左右拖曳。
-      </p>
+      <!-- 說明文字依單張／長條模式由 editor/main.js 設定 -->
+      <p id="previewHint" class="instruction previewHint"></p>
 
       <div id="canvasContainer">
         <!-- 底層為截圖本身，上層為標示圖層（偵測框、移除區域、選取框） -->
@@ -101,8 +99,17 @@
           <button id="downloadAllGroupsButton" type="button" class="primary" disabled
             title="每一段輸出為一張獨立的長圖">下載全部段落（0）</button>
           <button id="mergeDownloadButton" type="button" class="secondary" disabled
-            title="把所有段落接成一張長圖（移除區域已排除）">合併成一張長圖下載</button>
+            title="把勾選「加入合併」的段落依序接成一張長圖（移除區域已排除）">合併勾選的段落（0）</button>
         </div>
+        <div class="groupButtons">
+          <button id="selectAllPartsButton" type="button" class="secondary"
+            title="所有段落都加入合併">全選段落</button>
+          <button id="deselectAllPartsButton" type="button" class="secondary"
+            title="所有段落都不加入合併">取消全選段落</button>
+        </div>
+        <p class="groupHint">
+          在下方每一段勾選「加入合併」，即可只把需要的段落合併成一張長圖。
+        </p>
       </div>
 
       <!-- 長條截圖：分批擷取的下一批 -->

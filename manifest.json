@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "My Screenshot Cropper",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "截圖、圖片偵測、自動捲動與長圖拼接。",
   "minimum_chrome_version": "116",
   "icons": {
@@ -34,14 +34,11 @@
   },
   "commands": {
     "_execute_action": {
-      "suggested_key": {
-        "default": "Alt+Shift+S"
-      },
       "description": "開啟截圖選單"
     },
     "capture-visible": {
       "suggested_key": {
-        "default": "Alt+Shift+A"
+        "default": "Alt+Shift+S"
       },
       "description": "擷取目前畫面"
     },

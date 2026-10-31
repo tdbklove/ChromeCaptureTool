@@ -49,6 +49,9 @@ export const state = {
     right: { width: 0, removed: false },
     detected: { left: 0, right: 0 }
   },
+  // 不加入合併的段落範圍（{ startY, endY }）。段落會隨移除區域重新計算，
+  // 因此記錄範圍而不是段落編號：新段落的中心落在這些範圍內，就維持「不加入合併」。
+  excludedPartRanges: [],
   // 正在拖曳的移除框或側邊空白邊線。
   dragCut: null,
   addCutMode: false,

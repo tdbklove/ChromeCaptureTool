@@ -7,6 +7,7 @@ export const dom = {
   overlay: $("#overlay"),
 
   status: $("#status"),
+  previewHint: $("#previewHint"),
   modeBadge: $("#modeBadge"),
   settingsButton: $("#settingsButton"),
 
@@ -33,6 +34,8 @@ export const dom = {
   addCutButton: $("#addCutButton"),
   downloadAllGroupsButton: $("#downloadAllGroupsButton"),
   mergeDownloadButton: $("#mergeDownloadButton"),
+  selectAllPartsButton: $("#selectAllPartsButton"),
+  deselectAllPartsButton: $("#deselectAllPartsButton"),
 
   sessionControls: $("#sessionControls"),
   continueButton: $("#continueButton"),
