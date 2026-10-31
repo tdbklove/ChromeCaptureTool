@@ -2,14 +2,15 @@
 
 import { clamp } from "../lib/stitch-plan.js";
 import { pxPerCss, requestDraw } from "./canvas.js";
-import { dom, setStatus } from "./dom.js";
+import { dom, notify, setStatus } from "./dom.js";
 import {
   buttonRow,
   createCopyButton,
-  describeDownload,
   downloadItems,
   makeThumbnail,
-  revokePreviewUrls
+  reportDownload,
+  revokePreviewUrls,
+  runDownload
 } from "./output.js";
 import { state } from "./state.js";
 
@@ -351,12 +352,14 @@ export async function renderResults() {
       downloadButton.disabled = true;
       downloadButton.textContent = "正在儲存……";
 
-      try {
-        const result = await downloadItems([{ label: itemLabel(item), rects: item }]);
-        setStatus(describeDownload(result, "張圖片"));
-      } finally {
-        downloadButton.disabled = false;
-        downloadButton.textContent = "下載這張圖片";
+      const result = await runDownload(() =>
+        downloadItems([{ label: itemLabel(item), rects: item }]));
+
+      downloadButton.disabled = false;
+      downloadButton.textContent = "下載這張圖片";
+
+      if (result) {
+        reportDownload(result, "張圖片", { button: downloadButton, buttonText: "下載這張圖片" });
       }
     });
 
@@ -365,7 +368,7 @@ export async function renderResults() {
       preview,
       dimensions,
       selectLabel,
-      buttonRow(downloadButton, createCopyButton(() => ({ ...item }), setStatus))
+      buttonRow(downloadButton, createCopyButton(() => ({ ...item })))
     );
     dom.resultsContainer.appendChild(card);
 
@@ -431,7 +434,7 @@ export function initSingleMode(refreshControls) {
     const targets = state.detectedImages.filter((item) => item.selected);
 
     if (targets.length === 0) {
-      setStatus("請先勾選至少一張圖片。");
+      notify("請先勾選至少一張圖片，再按下載。", "error");
       return;
     }
 
@@ -444,10 +447,13 @@ export function initSingleMode(refreshControls) {
         (index, total) => setStatus(`正在儲存第 ${index + 1} ／ ${total} 張……`)
       );
 
-      setStatus(describeDownload(result, "張圖片"));
-    } finally {
       state.busy = false;
       refreshControls();
+      reportDownload(result, "張圖片", { button: dom.downloadSelectedButton, buttonText: refreshControls });
+    } catch (error) {
+      state.busy = false;
+      refreshControls();
+      notify(error.message || "下載失敗，請重試。", "error");
     }
   });
 }

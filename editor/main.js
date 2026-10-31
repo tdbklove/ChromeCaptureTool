@@ -13,10 +13,16 @@ import {
   setSource,
   updateZoomControls
 } from "./canvas.js";
-import { dom, setStatus } from "./dom.js";
+import { dom, flashButton, notify, setStatus } from "./dom.js";
 import { initHistory, recordHistory, redo, resetHistory, undo } from "./history.js";
 import { initInteraction } from "./interaction.js";
-import { copyRects, describeDownload, downloadItems, revokePreviewUrls } from "./output.js";
+import {
+  copyRects,
+  downloadItems,
+  reportDownload,
+  revokePreviewUrls,
+  runDownload
+} from "./output.js";
 import {
   drawActiveItem,
   drawDetectionBoxes,
@@ -278,24 +284,26 @@ dom.resetAllButton.addEventListener("click", () => {
 
 dom.saveButton.addEventListener("click", async () => {
   if (!state.loaded || !state.selection || state.selection.width < 2) {
-    setStatus("請先在截圖上拖曳，選取要下載的範圍。");
+    notify("請先在截圖上拖曳，選取要下載的範圍。", "error");
     return;
   }
 
   dom.saveButton.disabled = true;
 
-  try {
-    const label = `manual_${timestampText(Date.now()).slice(9)}`;
-    const result = await downloadItems([{ label, rects: { ...state.selection } }]);
-    setStatus(describeDownload(result, "張圖片"));
-  } finally {
-    dom.saveButton.disabled = false;
+  const label = `manual_${timestampText(Date.now()).slice(9)}`;
+  const result = await runDownload(() =>
+    downloadItems([{ label, rects: { ...state.selection } }]));
+
+  dom.saveButton.disabled = false;
+
+  if (result) {
+    reportDownload(result, "張圖片", { button: dom.saveButton, buttonText: "下載手動選取範圍" });
   }
 });
 
 dom.copySelectionButton.addEventListener("click", async () => {
   if (!state.loaded || !state.selection || state.selection.width < 2) {
-    setStatus("請先在截圖上拖曳，選取要複製的範圍。");
+    notify("請先在截圖上拖曳，選取要複製的範圍。", "error");
     return;
   }
 
@@ -303,12 +311,13 @@ dom.copySelectionButton.addEventListener("click", async () => {
 
   try {
     await copyRects({ ...state.selection });
-    setStatus("已將手動選取範圍複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
+    dom.copySelectionButton.disabled = false;
+    notify("已將手動選取範圍複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
+    flashButton(dom.copySelectionButton, "✓ 已複製", "複製手動選取範圍");
   } catch (error) {
     console.error("複製失敗：", error);
-    setStatus("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。");
-  } finally {
     dom.copySelectionButton.disabled = false;
+    notify("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。", "error");
   }
 });
 

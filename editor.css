@@ -788,3 +788,64 @@ button.warning:not(:disabled) {
   width: auto;
   flex: none;
 }
+
+/* ---------- 操作結果通知（下載、複製） ---------- */
+
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(32, 33, 36, 0.28);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -12px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.toast.success {
+  background: #188038;
+}
+
+.toast.error {
+  background: #c5221f;
+}
+
+.toastIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  font-weight: 700;
+  color: currentColor;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+}
+
+/* 按鈕完成後短暫顯示「✓ 已儲存」 */
+button.done,
+button.done:hover:not(:disabled) {
+  color: #ffffff;
+  background: #188038;
+  border-color: #188038;
+}

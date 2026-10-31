@@ -12,15 +12,16 @@ import {
   splitIntoParts
 } from "../lib/stitch-plan.js";
 import { pxPerCss, requestDraw, visibleRange } from "./canvas.js";
-import { dom, setStatus } from "./dom.js";
+import { dom, notify, setStatus } from "./dom.js";
 import {
   buttonRow,
   createCopyButton,
-  describeDownload,
   downloadItems,
   makeThumbnail,
   mergeHeightLimit,
+  reportDownload,
   revokePreviewUrls,
+  runDownload,
   splitByHeight
 } from "./output.js";
 import { state } from "./state.js";
@@ -957,16 +958,18 @@ export async function renderStitchGroups() {
       downloadButton.disabled = true;
       downloadButton.textContent = "正在儲存……";
 
-      try {
-        const result = await downloadItems([{ label: partLabel(number), rects: rect }]);
-        setStatus(describeDownload(result, "段長圖"));
-      } finally {
-        downloadButton.disabled = false;
-        downloadButton.textContent = "下載此段長圖";
+      const result = await runDownload(() =>
+        downloadItems([{ label: partLabel(number), rects: rect }]));
+
+      downloadButton.disabled = false;
+      downloadButton.textContent = "下載此段長圖";
+
+      if (result) {
+        reportDownload(result, "段長圖", { button: downloadButton, buttonText: "下載此段長圖" });
       }
     });
 
-    card.appendChild(buttonRow(downloadButton, createCopyButton(() => rect, setStatus)));
+    card.appendChild(buttonRow(downloadButton, createCopyButton(() => rect)));
     dom.resultsContainer.appendChild(card);
 
     try {
@@ -1311,19 +1314,22 @@ export function initStitchMode(refreshControls) {
     state.busy = true;
     refreshControls();
 
-    try {
-      const result = await downloadItems(
-        state.stitchParts.map((part, index) => ({
-          label: partLabel(index + 1),
-          rects: partRect(part)
-        })),
-        (index, total) => setStatus(`正在儲存第 ${index + 1} ／ ${total} 段……`)
-      );
+    const result = await runDownload(() => downloadItems(
+      state.stitchParts.map((part, index) => ({
+        label: partLabel(index + 1),
+        rects: partRect(part)
+      })),
+      (index, total) => setStatus(`正在儲存第 ${index + 1} ／ ${total} 段……`)
+    ));
 
-      setStatus(describeDownload(result, "段長圖"));
-    } finally {
-      state.busy = false;
-      refreshControls();
+    state.busy = false;
+    refreshControls();
+
+    if (result) {
+      reportDownload(result, "段長圖", {
+        button: dom.downloadAllGroupsButton,
+        buttonText: refreshControls
+      });
     }
   });
 
@@ -1332,7 +1338,7 @@ export function initStitchMode(refreshControls) {
     const { selected } = plan;
 
     if (selected.length === 0) {
-      setStatus("請先在段落中勾選「加入合併」。");
+      notify("請先在段落中勾選「加入合併」，再按合併。", "error");
       return;
     }
 
@@ -1361,29 +1367,34 @@ export function initStitchMode(refreshControls) {
         rects
       }));
 
-      const result = await downloadItems(
+      const result = await runDownload(() => downloadItems(
         items,
         (index, total) => total > 1 && setStatus(`正在合併並儲存第 ${index + 1} ／ ${total} 張……`)
-      );
+      ));
+
+      state.busy = false;
+      refreshControls();
+
+      if (!result) return;
 
       const numbers = selected.map(({ number }) => number).join("、");
 
       if (result.failed > 0) {
-        setStatus("合併下載失敗，請減少勾選的段落，或改用「下載全部段落」。");
-      } else if (items.length > 1) {
-        setStatus(
-          `已將第 ${numbers} 段合併，因超過高度上限分為 ${items.length} 張圖片。` +
-          describeDownload(result, "張")
-        );
-      } else {
-        setStatus(
-          `已將第 ${numbers} 段合併為一張長圖（${plan.width} × ${plan.totalHeight}px）。` +
-          describeDownload(result, "張")
-        );
+        notify("合併下載失敗，請減少勾選的段落，或改用「下載全部段落」。", "error");
+        return;
       }
-    } finally {
+
+      reportDownload(result, "張", {
+        button: dom.mergeDownloadButton,
+        buttonText: refreshControls,
+        prefix: items.length > 1
+          ? `已將第 ${numbers} 段合併，因超過高度上限分為 ${items.length} 張圖片。`
+          : `已將第 ${numbers} 段合併為一張長圖（${plan.width} × ${plan.totalHeight}px）。`
+      });
+    } catch (error) {
       state.busy = false;
       refreshControls();
+      notify(error.message || "合併下載失敗，請重試。", "error");
     }
   });
 

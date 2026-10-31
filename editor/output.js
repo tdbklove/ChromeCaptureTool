@@ -2,6 +2,7 @@
 
 import { buildFilename, prepareDownloadTarget, saveBlob } from "../lib/downloads.js";
 import { maxOutputHeight, outputFormat } from "../lib/settings.js";
+import { flashButton, notify } from "./dom.js";
 import { state } from "./state.js";
 
 // 預覽縮圖的最大寬度（像素）。只用於顯示，不影響下載的原圖品質。
@@ -149,7 +150,7 @@ export async function copyRects(rects) {
 }
 
 // 結果卡片上的「複製」按鈕。getRects 在點擊時才取得範圍（範圍可能已被調整）。
-export function createCopyButton(getRects, setStatus) {
+export function createCopyButton(getRects) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "secondary";
@@ -160,15 +161,22 @@ export function createCopyButton(getRects, setStatus) {
     button.disabled = true;
     button.textContent = "複製中……";
 
+    let copied = false;
+
     try {
       await copyRects(getRects());
-      setStatus("已複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
+      copied = true;
+      notify("已複製到剪貼簿，可以直接貼上（Ctrl＋V）。");
     } catch (error) {
       console.error("複製失敗：", error);
-      setStatus("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。");
+      notify("複製失敗：圖片可能過大，或瀏覽器不允許存取剪貼簿。請改用下載。", "error");
     } finally {
       button.disabled = false;
       button.textContent = "複製";
+
+      if (copied) {
+        flashButton(button, "✓ 已複製", "複製");
+      }
     }
   });
 
@@ -181,6 +189,30 @@ export function buttonRow(...buttons) {
   row.className = "cardButtons";
   row.append(...buttons);
   return row;
+}
+
+// 執行下載；發生錯誤（例如無法取得資料夾權限）時以通知顯示並回傳 null。
+export async function runDownload(task) {
+  try {
+    return await task();
+  } catch (error) {
+    console.error("下載失敗：", error);
+    notify(error.message || "下載失敗，請重試。", "error");
+    return null;
+  }
+}
+
+// 以醒目的通知顯示下載結果；全部成功時，按下的按鈕會短暫顯示「✓ 已儲存」。
+// prefix 會加在說明文字前面（例如「已合併為一張長圖」）。
+// buttonText 為按鈕恢復時的文字，也可以傳入函式（例如重新整理按鈕狀態）。
+export function reportDownload(result, noun, { button, buttonText, prefix = "" } = {}) {
+  const failed = result.failed > 0;
+
+  notify(prefix + describeDownload(result, noun), failed ? "error" : "success");
+
+  if (button && !failed) {
+    flashButton(button, "✓ 已儲存", buttonText ?? button.textContent);
+  }
 }
 
 // 下載結果的狀態文字。
