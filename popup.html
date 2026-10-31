@@ -36,19 +36,14 @@
       </button>
     </div>
 
-    <p id="status" class="status" role="status" aria-live="polite">
-      準備就緒
-    </p>
+    <!-- 截圖進度與結果；沒有訊息時隱藏 -->
+    <p id="status" class="status" role="status" aria-live="polite" hidden></p>
 
-    <p class="hint">
-      請先切換到要截取的網頁，再點擊按鈕。
-    </p>
-
-    <p class="warning" role="note">
-      截圖進行中請勿切換分頁、捲動或操作網頁，否則會拍到錯誤的畫面；長條截圖偵測到切換分頁時會自動停止。
-    </p>
-
-    <p id="menuShortcut" class="hint" hidden></p>
+    <ul class="tips">
+      <li>先切換到要截取的網頁，再按上方按鈕。</li>
+      <li><strong>截圖進行中請勿切換分頁、捲動或操作網頁</strong>，否則會拍到錯誤的畫面；長條截圖偵測到切換分頁時會自動停止。</li>
+      <li id="shortcutTip">快捷鍵可在下方的設定中修改。</li>
+    </ul>
 
     <button id="settingsButton" type="button" class="link">
       下載位置與快捷鍵設定

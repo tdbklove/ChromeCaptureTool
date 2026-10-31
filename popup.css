@@ -173,29 +173,51 @@ button:disabled {
 
 /* ---------- 狀態與提示 ---------- */
 
+/* 截圖進度與結果：只在有訊息時顯示 */
 .status {
-  min-height: 40px;
   margin: 16px 0 0;
   padding: 10px 12px;
   font-size: 13px;
-  color: var(--text-2);
-  background: var(--surface-2);
+  color: var(--primary-text);
+  background: var(--primary-soft);
   border-radius: 8px;
   overflow-wrap: anywhere;
 }
 
-.warning {
-  margin: 10px 0 0;
-  padding: 8px 10px;
+.status[hidden] {
+  display: none;
+}
+
+.status.error {
+  color: #b3261e;
+  background: #fce8e6;
+}
+
+/* 使用說明：所有提示使用相同樣式 */
+.tips {
+  margin: 16px 0 0;
+  padding: 12px 12px 12px 28px;
   font-size: 12px;
-  line-height: 1.5;
-  color: #b06000;
-  background: #fef7e0;
+  line-height: 1.6;
+  color: var(--text-2);
+  background: var(--surface-2);
   border-radius: 8px;
 }
 
-.hint {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: var(--text-3);
+.tips li + li {
+  margin-top: 4px;
+}
+
+.tips strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tips kbd {
+  padding: 0 5px;
+  font-family: inherit;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
 }
