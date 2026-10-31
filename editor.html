@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>圖片裁切工具</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="stylesheet" href="editor.css">
+  <script src="editor.js" defer></script>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand">
+      <img src="icons/icon-32.png" alt="" width="28" height="28">
+      <h1>圖片裁切工具</h1>
+      <span id="modeBadge" class="badge">單張截圖</span>
+    </div>
+  </header>
+
+  <p id="status" class="statusBar" role="status" aria-live="polite">
+    正在載入圖片……
+  </p>
+
+  <main>
+    <!-- 左側：截圖預覽與手動選取 -->
+    <section class="canvasSection">
+      <div class="canvasToolbar">
+        <div class="controlGroup inline">
+          <span class="groupTitle">手動選取範圍</span>
+          <div class="groupButtons">
+            <button id="resetButton" type="button" class="secondary"
+              title="取消目前拖曳出的手動選取範圍">清除手動選取</button>
+            <button id="resetAllButton" type="button" class="secondary"
+              title="把所有偵測框還原到自動偵測時的位置，並清除手動選取">還原偵測框</button>
+          </div>
+        </div>
+        <button id="saveButton" type="button" class="primary" disabled
+          title="下載目前手動選取的範圍（不是偵測框）">下載手動選取範圍</button>
+      </div>
+
+      <p class="instruction previewHint">
+        綠色框線為偵測到且已勾選的圖片，灰色為未勾選。在預覽區拖曳可以手動框出範圍；
+        拖曳框的邊線可以調整大小。長條截圖中，紅色區域為會被移除的範圍。
+      </p>
+
+      <div id="canvasContainer">
+        <canvas id="canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- 右側：結果與操作 -->
+    <section class="resultsSection">
+      <div class="sectionHeader">
+        <h2 id="resultsTitle">自動偵測結果</h2>
+        <p id="resultsInstruction" class="instruction">
+          圖片依網頁由上到下、由左到右排序，預設全部勾選。
+          可以單獨下載，或勾選後一次下載。
+        </p>
+      </div>
+
+      <!-- 單張截圖：圖片選取 -->
+      <div id="imageBatchControls" class="controlGroup">
+        <span class="groupTitle">選擇要下載的圖片</span>
+        <div class="groupButtons">
+          <button id="selectAllButton" type="button" class="secondary"
+            title="勾選所有偵測到的圖片">全選圖片</button>
+          <button id="deselectAllButton" type="button" class="secondary"
+            title="取消勾選所有圖片">取消選取圖片</button>
+          <button id="downloadSelectedButton" type="button" class="primary" disabled
+            title="依序下載所有已勾選的圖片">下載選取的圖片（0）</button>
+        </div>
+      </div>
+
+      <!-- 長條截圖：移除區域 與 下載 -->
+      <div id="stitchBatchControls" class="controlGroup" hidden>
+        <span class="groupTitle">移除區域（會從長圖中刪除）</span>
+        <div class="groupButtons">
+          <button id="selectAllCutsButton" type="button" class="secondary"
+            title="讓所有間隔、頂部、底部區域都會被移除">全部移除</button>
+          <button id="deselectAllCutsButton" type="button" class="secondary"
+            title="保留所有區域，不移除任何內容（手動新增的區域會停用，但不會刪除）">全部保留</button>
+          <button id="resetCutsButton" type="button" class="secondary"
+            title="恢復成自動偵測的移除區域（只移除偵測到的廣告）">還原自動移除區域</button>
+          <button id="addCutButton" type="button" class="secondary" aria-pressed="false"
+            title="在預覽區拖曳，手動框出要移除的範圍">手動新增移除區域</button>
+        </div>
+        <p class="groupHint">
+          點擊區域可切換移除或保留；拖曳區域的邊線可調整範圍，範圍可以超出間隔。
+        </p>
+
+        <div id="cutList" class="cutList"></div>
+
+        <span class="groupTitle">下載長圖</span>
+        <div class="groupButtons">
+          <button id="downloadAllGroupsButton" type="button" class="primary" disabled
+            title="每一段輸出為一張獨立的長圖">下載全部段落（0）</button>
+          <button id="mergeDownloadButton" type="button" class="secondary" disabled
+            title="把所有段落接成一張長圖（移除區域已排除）">合併成一張長圖下載</button>
+        </div>
+      </div>
+
+      <!-- 長條截圖：分批擷取的下一批 -->
+      <div id="sessionControls" class="controlGroup" hidden>
+        <span class="groupTitle">分批截圖</span>
+        <div class="groupButtons">
+          <button id="continueButton" type="button" class="primary" disabled
+            title="切回原頁面，從上一批的結束位置繼續擷取下一批">繼續截圖（下一批）</button>
+          <button id="finishButton" type="button" class="text" disabled
+            title="結束本次長條截圖，並刪除暫存的截圖資料">結束並清除暫存</button>
+        </div>
+      </div>
+
+      <div id="results" class="results">
+        <p class="placeholder">正在分析圖片……</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

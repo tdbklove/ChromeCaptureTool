@@ -1,0 +1,641 @@
+/* ==========================================================
+   圖片裁切工具：極簡、扁平化的 Google 風格
+   ========================================================== */
+
+:root {
+  --primary: #1a73e8;
+  --primary-hover: #1765cc;
+  --primary-soft: #e8f0fe;
+  --primary-text: #174ea6;
+
+  --text: #202124;
+  --text-2: #5f6368;
+  --text-3: #80868b;
+
+  --border: #dadce0;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --workspace: #eceff1;
+
+  --danger: #d93025;
+  --warning-bg: #fef7e0;
+  --warning-text: #b06000;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  --font: "Google Sans", "Roboto", "Noto Sans TC", "Microsoft JhengHei",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 18px;
+}
+
+h2 {
+  font-size: 15px;
+}
+
+h3 {
+  font-size: 14px;
+}
+
+p {
+  margin: 0;
+}
+
+/* ---------- 頂部工具列 ---------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+.actions,
+.batchBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---------- 按鈕 ---------- */
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+/* 主要操作：實心藍色 */
+button.primary,
+#saveButton,
+#downloadSelectedButton,
+#downloadAllGroupsButton,
+#continueButton {
+  color: #fff;
+  background: var(--primary);
+}
+
+button.primary:hover:not(:disabled),
+#saveButton:hover:not(:disabled),
+#downloadSelectedButton:hover:not(:disabled),
+#downloadAllGroupsButton:hover:not(:disabled),
+#continueButton:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+/* 次要操作：白底細框 */
+button.secondary,
+button:not(.primary):not(.text) {
+  color: var(--primary-text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+button.secondary:hover:not(:disabled),
+button:not(.primary):not(.text):hover:not(:disabled) {
+  background: var(--primary-soft);
+  border-color: transparent;
+}
+
+/* 文字按鈕：無框線 */
+button.text {
+  color: var(--text-2);
+  background: transparent;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+button.text:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--danger);
+}
+
+button[aria-pressed="true"] {
+  color: var(--primary-text);
+  background: var(--primary-soft);
+  border-color: transparent;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  color: #9aa0a6;
+  background: #f1f3f4;
+  border-color: transparent;
+  cursor: default;
+}
+
+/* ---------- 狀態列 ---------- */
+
+.statusBar {
+  /* 固定高度：狀態文字變化時不會推動下方的畫布，避免拖曳目標位置跳動 */
+  height: 56px;
+  overflow-y: auto;
+  padding: 8px 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 版面：左右兩欄 ---------- */
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  min-height: 0;
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sectionHeader {
+  padding: 16px 20px 8px;
+}
+
+.sectionHeader h2 {
+  margin-bottom: 4px;
+}
+
+.instruction {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+/* ---------- 左側：截圖預覽 ---------- */
+
+.canvasSection {
+  background: var(--workspace);
+}
+
+.canvasSection .sectionHeader {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+#canvasContainer {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+#canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background: var(--surface);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
+}
+
+/* ---------- 右側：結果面板 ---------- */
+
+.resultsSection {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.resultsSection .sectionHeader {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.batchBar {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.batchBar button {
+  flex: 0 0 auto;
+}
+
+.results {
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+  padding: 16px 20px 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-content: start;
+}
+
+.placeholder,
+.results > p {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* 每個結果卡片 */
+.resultCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.resultCard h3 {
+  overflow-wrap: anywhere;
+}
+
+.resultCard img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.resultCard p {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.resultCard button {
+  width: 100%;
+}
+
+/* 勾選列 */
+.selectRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.selectRow input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex: none;
+}
+
+/* 間隔與自訂框清單 */
+.gapPanel {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.gapPanel h3 {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.gapPanel .selectRow {
+  justify-content: flex-start;
+}
+
+.gapPanel .selectRow button {
+  margin-left: auto;
+}
+
+.gapPanel .selectRow button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* 注意事項 */
+.note {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- 小螢幕：改為單欄 ---------- */
+
+@media (max-width: 900px) {
+  body {
+    overflow: auto;
+    grid-template-rows: auto auto auto;
+  }
+
+  main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resultsSection {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .results {
+    overflow: visible;
+  }
+}
+
+/* ==========================================================
+   操作分組：標題、群組與徽章
+   ========================================================== */
+
+.badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary-text);
+  background: var(--primary-soft);
+  border-radius: 12px;
+}
+
+.canvasToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.previewHint {
+  padding: 10px 20px 0;
+}
+
+.controlGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.controlGroup.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+}
+
+.groupTitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+}
+
+.groupButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.groupHint {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+.controlGroup + .controlGroup {
+  padding-top: 14px;
+}
+
+/* 移除區域清單：放在「移除區域」群組內，不再另外框起來 */
+.cutList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cutList:empty {
+  display: none;
+}
+
+.cutList .gapPanel {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.cutList .gapPanel h3 {
+  display: none;
+}
+
+/* ==========================================================
+   第二輪調整：層級、字級與可捲動的預覽
+   ========================================================== */
+
+/* 次要按鈕較小、較淡；主要按鈕較大、較醒目 */
+button.primary,
+#saveButton,
+#downloadSelectedButton,
+#downloadAllGroupsButton,
+#continueButton {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+button.secondary,
+button:not(.primary):not(.text) {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+button.text {
+  font-size: 12px;
+}
+
+/* 移除區域清單：字級較小，作為次要資訊 */
+.cutList .selectRow {
+  font-size: 12px;
+  color: var(--text-2);
+  gap: 6px;
+}
+
+.cutList .selectRow input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+.cutList .gapPanel .selectRow button {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* 分段長圖預覽：寬度完整顯示，高度超過時在框內捲動 */
+.previewFrame {
+  max-height: 320px;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.previewFrame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: initial;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* ==========================================================
+   第三輪調整：按鈕尺寸與圓角、標題與說明文字的層級
+   ========================================================== */
+
+/* 按鈕：略為縮小，圓角統一為 0.5rem */
+button {
+  padding: 6px 12px;
+  border-radius: 0.5rem;
+}
+
+button.primary,
+#saveButton,
+#downloadSelectedButton,
+#downloadAllGroupsButton,
+#continueButton {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+button.secondary,
+button:not(.primary):not(.text) {
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+button.text {
+  font-size: 12px;
+}
+
+/* 標題：明顯較大、加粗 */
+.brand h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sectionHeader h2,
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* 小標題（群組名稱）：較小、淡色，與主標題分開 */
+.groupTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+/* 說明文字：較小，作為次要資訊 */
+.instruction,
+.previewHint {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.groupHint {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.statusBar {
+  font-size: 12px;
+}
+
+/* 按鈕：圓角 0.25rem，上下留白加大，左右維持原本的寬度 */
+button {
+  padding: 9px 12px;
+  border-radius: 0.25rem;
+}

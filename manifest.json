@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "My Screenshot Cropper",
+  "version": "1.12.2",
+  "description": "截圖、圖片偵測、自動捲動與長圖拼接。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "截圖與裁切",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  }
+}

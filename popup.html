@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>截圖與裁切</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <main class="container">
+    <header class="brand">
+      <img src="icons/icon-48.png" alt="" width="32" height="32">
+      <div>
+        <h1>截圖與裁切</h1>
+        <p class="subtitle">擷取目前畫面，或自動拼接整頁長圖。</p>
+      </div>
+    </header>
+
+    <div class="actions">
+      <button id="captureButton" type="button" class="primary">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 2v16h16" />
+          <path d="M2 6h16v16" />
+        </svg>
+        <span>擷取目前畫面</span>
+      </button>
+
+      <button id="stitchButton" type="button" class="secondary">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5" y="3" width="14" height="6" rx="1.5" />
+          <rect x="5" y="11" width="14" height="6" rx="1.5" />
+          <path d="M12 19v2" />
+        </svg>
+        <span>自動捲動並拼接</span>
+      </button>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite">
+      準備就緒
+    </p>
+
+    <p class="hint">
+      請先切換到要截取的網頁，再點擊按鈕。
+    </p>
+  </main>
+</body>
+</html>
