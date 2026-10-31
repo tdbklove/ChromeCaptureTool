@@ -55,6 +55,13 @@ export const state = {
     right: { width: 0, removed: false },
     detected: { left: 0, right: 0 }
   },
+  // 上下裁切：size 為從長圖最上方／最下方裁掉的高度（像素），removed 表示輸出時裁掉。
+  // detected 為自動偵測的頂部、底部空間。
+  trims: {
+    top: { size: 0, removed: false },
+    bottom: { size: 0, removed: false },
+    detected: { top: 0, bottom: 0 }
+  },
   // 不加入合併的段落範圍（{ startY, endY }）。段落會隨移除區域重新計算，
   // 因此記錄範圍而不是段落編號：新段落的中心落在這些範圍內，就維持「不加入合併」。
   excludedPartRanges: [],

@@ -14,14 +14,18 @@ import { state } from "./state.js";
 import {
   applyCutDrag,
   applySideDrag,
+  applyTrimDrag,
   CUT_WARNING_TEXT,
   hitTestCut,
   hitTestSide,
+  hitTestTrim,
   MIN_CUT_SIZE,
   recomputeStitch,
   sideAt,
   toggleGap,
   toggleSide,
+  toggleTrim,
+  trimAt,
   updateAddCutButton,
   updateStitchView
 } from "./stitch-mode.js";
@@ -74,6 +78,19 @@ function onPointerDown(event) {
       return;
     }
 
+    // 按在上下裁切的邊線上：上下調整（沒有裁切時，邊線就在長圖的最上緣與最下緣）。
+    const trimHit = hitTestTrim(point);
+
+    if (trimHit) {
+      state.dragCut = {
+        adding: false,
+        hit: trimHit,
+        startPoint: point,
+        origin: { ...state.trims[trimHit.edge] }
+      };
+      return;
+    }
+
     // 按在既有移除框的邊緣或內部：調整或移動。
     const hit = hitTestCut(point);
 
@@ -118,6 +135,8 @@ function updateHoverCursor(point) {
   } else if (!state.addCutMode) {
     if (hitTestSide(point)) {
       cursor = "ew-resize";
+    } else if (hitTestTrim(point)) {
+      cursor = "ns-resize";
     } else {
       const hit = hitTestCut(point);
 
@@ -145,6 +164,8 @@ function onPointerMove(event) {
 
     if (drag.hit.kind === "side") {
       applySideDrag(point);
+    } else if (drag.hit.kind === "trim") {
+      applyTrimDrag(point);
     } else if (drag.adding) {
       const cut = state.customCuts[drag.hit.index];
       cut.startY = Math.round(Math.min(drag.startPointY, point.y));
@@ -203,6 +224,34 @@ function finishCutDrag(moved, point) {
     return;
   }
 
+  if (drag.hit.kind === "trim") {
+    if (!moved) {
+      // 點一下邊線：切換該區域裁掉或保留；沒有高度時視為點擊該位置的間隔。
+      state.trims[drag.hit.edge] = drag.origin;
+
+      if (drag.origin.size > 0) {
+        toggleTrim(drag.hit.edge);
+      } else {
+        const gap = state.stitchGaps.find((item) => point.y >= item.startY && point.y < item.endY);
+
+        if (gap) {
+          toggleGap(gap.id);
+        } else {
+          requestDraw();
+        }
+      }
+      return;
+    }
+
+    updateStitchView();
+    setStatus(
+      `已調整上下裁切：頂部 ${state.trims.top.removed ? state.trims.top.size : 0}px、` +
+      `底部 ${state.trims.bottom.removed ? state.trims.bottom.size : 0}px，` +
+      `長圖高度 ${state.height - (state.trims.top.removed ? state.trims.top.size : 0) - (state.trims.bottom.removed ? state.trims.bottom.size : 0)}px（尚未扣除其他移除區域）。`
+    );
+    return;
+  }
+
   if (drag.adding) {
     const index = drag.hit.index;
     const cut = state.customCuts[index];
@@ -223,9 +272,12 @@ function finishCutDrag(moved, point) {
   // 沒有移動：點擊間隔切換移除，點擊自訂框則切換啟用。
   if (!moved) {
     const side = sideAt(point);
+    const edge = trimAt(point);
 
     if (side) {
       toggleSide(side);
+    } else if (edge) {
+      toggleTrim(edge);
     } else if (drag.hit.kind === "gap") {
       toggleGap(drag.hit.id);
     } else {
@@ -272,16 +324,19 @@ function onPointerUp(event) {
 
   state.isDragging = false;
 
-  // 長條模式中單純點擊：切換所在位置的側邊空白或間隔。
+  // 長條模式中單純點擊：切換所在位置的側邊空白、上下裁切或間隔。
   if (state.mode === "stitch" && !moved) {
     state.selection = null;
     state.startPoint = null;
 
     const side = sideAt(point);
+    const edge = trimAt(point);
     const gap = state.stitchGaps.find((item) => point.y >= item.startY && point.y < item.endY);
 
     if (side) {
       toggleSide(side);
+    } else if (edge) {
+      toggleTrim(edge);
     } else if (gap) {
       toggleGap(gap.id);
     } else {

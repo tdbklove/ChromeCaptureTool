@@ -212,6 +212,94 @@ function sideEdgeX(side) {
   return side === "left" ? state.sides.left.width : state.width - state.sides.right.width;
 }
 
+// ---- 上下裁切 ----
+// 長圖最上方與最下方各有一條可拖曳的邊線，不論是否偵測到空白或廣告都可以使用，
+// 方便使用者裁掉頁首、頁尾等內容，控制整張圖的高度。預設值為圖片上方與下方的空間。
+
+// detected：{ top, bottom }，自動偵測的頂部、底部空間（截圖像素）。
+export function initTrims(detected) {
+  state.trims = {
+    detected,
+    top: { size: detected.top, removed: detected.top > 0 },
+    bottom: { size: detected.bottom, removed: detected.bottom > 0 }
+  };
+}
+
+function resetTrims() {
+  initTrims(state.trims.detected);
+}
+
+// 自動偵測的頂部、底部空間。
+export function detectedEdges() {
+  return computeStitchGroups({
+    ...state.stitchLayout,
+    heightPx: state.height
+  }).edges;
+}
+
+function activeTrims() {
+  return {
+    top: state.trims.top.removed ? state.trims.top.size : 0,
+    bottom: state.trims.bottom.removed ? state.trims.bottom.size : 0
+  };
+}
+
+function trimEdgeY(edge) {
+  return edge === "top" ? state.trims.top.size : state.height - state.trims.bottom.size;
+}
+
+// 判斷滑鼠是否在上下裁切的邊線上（整條邊線都有效）。
+export function hitTestTrim(point) {
+  const threshold = HANDLE_CSS_PX * pxPerCss();
+  let nearest = null;
+
+  for (const edge of ["top", "bottom"]) {
+    const distance = Math.abs(point.y - trimEdgeY(edge));
+
+    if (distance <= threshold && (!nearest || distance < nearest.distance)) {
+      nearest = { kind: "trim", edge, distance };
+    }
+  }
+
+  return nearest;
+}
+
+// 點擊位置所在的上下裁切區域（有高度時）。
+export function trimAt(point) {
+  if (state.trims.top.size > 0 && point.y < state.trims.top.size) {
+    return "top";
+  }
+
+  if (state.trims.bottom.size > 0 && point.y > state.height - state.trims.bottom.size) {
+    return "bottom";
+  }
+
+  return null;
+}
+
+export function applyTrimDrag(point) {
+  const { edge } = state.dragCut.hit;
+  const other = edge === "top" ? state.trims.bottom : state.trims.top;
+  const maxSize = state.height - (other.removed ? other.size : 0) - MIN_CUT_PX;
+
+  const size = edge === "top"
+    ? clamp(Math.round(point.y), 0, maxSize)
+    : clamp(Math.round(state.height - point.y), 0, maxSize);
+
+  // 拖曳邊線表示要裁掉這個範圍。
+  state.trims[edge] = { size, removed: size > 0 };
+}
+
+export function toggleTrim(edge) {
+  const entry = state.trims[edge];
+  entry.removed = !entry.removed;
+
+  updateStitchView();
+  setStatus(`${TRIM_LABELS[edge]}已${entry.removed ? "裁掉" : "保留"}。`);
+}
+
+const TRIM_LABELS = { top: "頂部區域", bottom: "底部區域" };
+
 // ---- 分組計算 ----
 
 export function recomputeStitch() {
@@ -220,7 +308,8 @@ export function recomputeStitch() {
     heightPx: state.height,
     removedGapIds: state.removedGapIds,
     cutOverrides: state.cutOverrides,
-    customCuts: state.customCuts
+    customCuts: state.customCuts,
+    edgeTrims: activeTrims()
   });
 
   state.stitchGaps = plan.gaps;
@@ -241,7 +330,7 @@ export function recomputeStitch() {
   state.stitchInfo.separatorCount = plan.separatorCount;
 }
 
-// 自動偵測的預設移除區域：所有間隔與頂部、底部區域（預設全選）。
+// 自動偵測的預設移除區域：所有圖片之間的間隔（預設全選）。
 export function defaultRemovedGapIds() {
   const initial = computeStitchGroups({
     ...state.stitchLayout,
@@ -257,8 +346,6 @@ function partRect(part) {
 }
 
 export function gapLabelById(id) {
-  if (id === "top") return "頂部區域";
-  if (id === "bottom") return "底部區域";
   return `間隔 ${id}`;
 }
 
@@ -287,6 +374,12 @@ export function buildStitchStatus() {
 
   if (removedSides.length > 0) {
     parts.push(`移除${removedSides.map((side) => SIDE_LABELS[side]).join("與")}`);
+  }
+
+  const trims = activeTrims();
+
+  if (trims.top > 0 || trims.bottom > 0) {
+    parts.push(`裁掉頂部 ${trims.top}px、底部 ${trims.bottom}px`);
   }
 
   parts.push(`共 ${state.stitchParts.length} 段輸出`);
@@ -427,6 +520,53 @@ export function drawStitchOverlay(ctx) {
 
     drawLabel(`自訂 ${index + 1}：移除`, "#6d28d9", labelX, cut.startY + labelSize + 4 * ratio);
   });
+
+  // 上下裁切：裁掉時以紅色標示；不論有沒有裁切，上下邊線都有拉條可以拖曳。
+  for (const edge of ["top", "bottom"]) {
+    const entry = state.trims[edge];
+    const edgeY = trimEdgeY(edge);
+    const regionY = edge === "top" ? 0 : edgeY;
+
+    if (entry.size > 0) {
+      if (entry.removed) {
+        ctx.fillStyle = CUT_COLOR;
+        ctx.fillRect(0, regionY, state.width, entry.size);
+      } else {
+        ctx.save();
+        ctx.strokeStyle = GAP_COLOR;
+        ctx.lineWidth = thinLine;
+        ctx.setLineDash([12 * ratio, 8 * ratio]);
+        ctx.beginPath();
+        ctx.moveTo(0, edgeY);
+        ctx.lineTo(state.width, edgeY);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const labelY = edge === "top"
+        ? labelSize + 4 * ratio
+        : edgeY + labelSize + 4 * ratio;
+
+      drawLabel(
+        `${TRIM_LABELS[edge]}：${entry.removed ? "裁掉" : "保留"}`,
+        entry.removed ? "#b91c1c" : GAP_COLOR,
+        labelX,
+        Math.min(labelY, state.height - 4 * ratio)
+      );
+    }
+
+    // 拉條畫在邊線的水平中央；邊線在最上緣或最下緣時往內移，完整顯示。
+    const x = Math.round((state.width - barLength) / 2);
+    const barY = clamp(edgeY - barThickness / 2, 0, state.height - barThickness);
+
+    ctx.save();
+    ctx.fillStyle = entry.removed && entry.size > 0 ? SIDE_COLOR : GAP_COLOR;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = Math.max(2, Math.round(2 * ratio));
+    ctx.fillRect(x, barY, barLength, barThickness);
+    ctx.strokeRect(x, barY, barLength, barThickness);
+    ctx.restore();
+  }
 
   // 左右空白：移除時以紅色直條標示，保留時以虛線標示。
   for (const side of ["left", "right"]) {
@@ -668,6 +808,15 @@ function checkboxRow(checked, text, title, onChange, extra) {
 function renderCutList() {
   dom.cutListContainer.replaceChildren();
 
+  const trimRows = ["top", "bottom"]
+    .filter((edge) => state.trims[edge].size > 0)
+    .map((edge) => checkboxRow(
+      state.trims[edge].removed,
+      ` ${TRIM_LABELS[edge]}（${state.trims[edge].size}px）`,
+      "勾選＝裁掉此區域；取消勾選＝保留",
+      () => toggleTrim(edge)
+    ));
+
   const sideRows = ["left", "right"]
     .filter((side) => state.sides[side].width > 0)
     .map((side) => checkboxRow(
@@ -677,8 +826,8 @@ function renderCutList() {
       () => toggleSide(side)
     ));
 
-  if (sideRows.length > 0) {
-    addPanel("左右空白", sideRows);
+  if (trimRows.length + sideRows.length > 0) {
+    addPanel("上下左右邊緣", [...trimRows, ...sideRows]);
   }
 
   if (state.stitchGaps.length > 0) {
@@ -1042,6 +1191,7 @@ export function resetCuts() {
 
   state.removedGapIds = defaultRemovedGapIds();
   resetSides();
+  resetTrims();
 
   updateStitchView();
 }
@@ -1076,10 +1226,14 @@ export function initStitchMode(refreshControls) {
       state.sides[side].removed = state.sides[side].width > 0;
     }
 
+    for (const edge of ["top", "bottom"]) {
+      state.trims[edge].removed = state.trims[edge].size > 0;
+    }
+
     updateStitchView();
 
     setStatus(
-      `已全部移除：${state.stitchGaps.length} 個區域、${state.customCuts.length} 個自訂框與左右空白，` +
+      `已全部移除：${state.stitchGaps.length} 個間隔、${state.customCuts.length} 個自訂框與上下左右邊緣，` +
       `共 ${state.stitchCuts.length} 處移除，分為 ${state.stitchParts.length} 段輸出。`
     );
   });
@@ -1092,6 +1246,8 @@ export function initStitchMode(refreshControls) {
 
     state.sides.left.removed = false;
     state.sides.right.removed = false;
+    state.trims.top.removed = false;
+    state.trims.bottom.removed = false;
 
     updateStitchView();
     setStatus("已保留所有區域（自訂框仍保留在清單中，可隨時重新啟用）。");

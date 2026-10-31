@@ -30,9 +30,11 @@ import {
   buildStitchedCanvas,
   buildStitchStatus,
   defaultRemovedGapIds,
+  detectedEdges,
   detectSides,
   drawStitchOverlay,
   initSides,
+  initTrims,
   initStitchMode,
   protectImages,
   recomputeStitch,
@@ -68,7 +70,7 @@ function applyMode() {
   // 預覽區的說明：只描述目前模式中實際會出現的顏色與操作。
   dom.previewHint.textContent = stitch
     ? "紅色區域為會被移除的範圍（上下的間隔與左右的空白），黃色虛線為保留的範圍，點一下即可切換移除或保留。" +
-      "拖曳紅色區域的上下邊線可調整範圍，左右兩側的邊線可左右拖曳。" +
+      "拖曳紅色區域的上下邊線可調整範圍；長圖最上方與最下方的邊線可上下拖曳，裁掉不需要的高度；左右兩側的邊線可左右拖曳。" +
       "在其他位置拖曳可手動框選範圍（藍色框線，框外會變暗），再按「下載手動選取範圍」。"
     : "綠色框線為偵測到的圖片，取消勾選「加入批次下載」的圖片會改為灰色框線。" +
       "點一下圖片框即可拖曳它的邊線調整範圍。" +
@@ -206,6 +208,7 @@ async function loadStitch(jobId) {
   };
 
   initSides(protectImages(detectSides(built.canvas), built.pxPerCssX));
+  initTrims(detectedEdges());
 
   state.cutOverrides = new Map();
   state.customCuts = [];
