@@ -38,6 +38,7 @@ export const dom = {
   resetCutsButton: $("#resetCutsButton"),
   addCutButton: $("#addCutButton"),
   downloadAllGroupsButton: $("#downloadAllGroupsButton"),
+  downloadCheckedButton: $("#downloadCheckedButton"),
   mergeDownloadButton: $("#mergeDownloadButton"),
   mergeWarning: $("#mergeWarning"),
   mergeDialog: $("#mergeDialog"),

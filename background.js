@@ -297,37 +297,80 @@ async function openCaptureEditor(tab, id) {
 const MAX_PAGES = 60;
 const MAX_PAGES_TOTAL_HEIGHT = 28000;
 
-// 等待翻頁：輪詢間隔、最長等待時間，以及兩次截圖之間的最短間隔（captureVisibleTab 每秒最多 2 次）。
-const PAGE_POLL_MS = 250;
-const PAGE_CHANGE_TIMEOUT_MS = 5000;
+// 等待翻頁：輪詢間隔，以及兩次截圖之間的最短間隔（captureVisibleTab 每秒最多 2 次）。
+const PAGE_POLL_MS = 200;
 const MIN_CAPTURE_INTERVAL_MS = 600;
 
-// 等待畫面中的主圖穩定（位置連續兩次相同且已載入完成）。
-// previousSignature 有值時，必須換成不同的圖片才算完成；逾時回傳 null。
-async function waitForMainImage(tabId, minSize, previousSignature, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+// 按下「→」鍵後，等待畫面開始換圖的時間；超過就重按一次，仍沒有變化才視為最後一頁。
+const PAGE_CHANGE_TIMEOUT_MS = 6000;
+const PAGE_RETRY_TIMEOUT_MS = 4000;
+
+// 換圖後等待新圖片「準備好」的最長時間（大型圖片可能要載入較久），逾時就直接擷取目前的畫面。
+const PAGE_READY_TIMEOUT_MS = 20000;
+
+// 先顯示模糊預覽圖、再換成高解析度圖片的網站：最多再等這麼久讓高解析度圖片載入。
+const LOW_RES_GRACE_MS = 4000;
+
+// 主圖位置連續相同的次數（約 0.6 秒），用來確認換頁動畫已經結束。
+const STABLE_POLLS = 3;
+
+function sameRect(a, b) {
+  return (
+    Math.abs(a.x - b.x) < 1 &&
+    Math.abs(a.y - b.y) < 1 &&
+    Math.abs(a.width - b.width) < 1 &&
+    Math.abs(a.height - b.height) < 1
+  );
+}
+
+// 等待畫面中的主圖換成新的一張並「準備好」：
+//   - 與 previousSignature 不同（第一頁時不需要）
+//   - 已載入完成、完全不透明（淡入動畫結束）、位置連續數次相同（換頁動畫結束）
+//   - 不是放大顯示的模糊預覽圖（最多再等 LOW_RES_GRACE_MS）
+// 回傳 { status: "ready", main } 或 { status: "no-change" }（在 changeTimeoutMs 內完全沒有換圖）。
+async function waitForMainImage(tabId, minSize, previousSignature, changeTimeoutMs) {
+  const startedAt = Date.now();
+  let changedAt = null;
   let last = null;
+  let stableCount = 0;
+  let latest = null;
 
-  while (Date.now() < deadline) {
+  while (true) {
+    const now = Date.now();
     const main = await runInPage(tabId, findMainImageInPage, [minSize]);
+    const changed = Boolean(main) && main.signature !== previousSignature;
 
-    const changed = main && main.signature !== previousSignature;
-    const stable = changed && last &&
-      last.signature === main.signature &&
-      Math.abs(last.rect.x - main.rect.x) < 1 &&
-      Math.abs(last.rect.y - main.rect.y) < 1 &&
-      Math.abs(last.rect.width - main.rect.width) < 1 &&
-      Math.abs(last.rect.height - main.rect.height) < 1;
+    if (!changed) {
+      last = null;
+      stableCount = 0;
 
-    if (stable && main.complete) {
-      return main;
+      if (changedAt === null && now - startedAt > changeTimeoutMs) {
+        return { status: "no-change" };
+      }
+    } else {
+      changedAt ??= now;
+
+      const same = last && last.signature === main.signature && sameRect(last.rect, main.rect);
+      stableCount = same ? stableCount + 1 : 0;
+      last = main;
+      latest = main;
+
+      const settled = stableCount >= STABLE_POLLS - 1;
+      const opaque = main.opacity >= 0.99;
+      const fullRes = !main.lowRes || now - changedAt > LOW_RES_GRACE_MS;
+
+      if (settled && opaque && main.complete && fullRes) {
+        return { status: "ready", main };
+      }
     }
 
-    last = changed ? main : null;
+    // 已經換圖但一直沒有準備好（例如圖片很大、載入很慢）：逾時就用最後看到的狀態。
+    if (changedAt !== null && now - changedAt > PAGE_READY_TIMEOUT_MS && latest) {
+      return { status: "ready", main: latest };
+    }
+
     await wait(PAGE_POLL_MS);
   }
-
-  return null;
 }
 
 // 從截圖中裁出主圖的範圍（CSS 像素換算為截圖像素）。
@@ -358,7 +401,8 @@ async function capturePages(tab) {
   try {
     const minSize = await detectionMinSize();
 
-    let main = await waitForMainImage(tab.id, minSize, null, 3000);
+    const first = await waitForMainImage(tab.id, minSize, null, 3000);
+    let main = first.main;
 
     if (!main) {
       throw new Error("畫面中找不到圖片。請先點開要擷取的圖片彈窗，再開始翻頁截圖。");
@@ -391,21 +435,27 @@ async function capturePages(tab) {
       seen.add(main.signature);
       totalHeight += page.height;
 
-      await runInPage(tab.id, pressArrowRightInPage);
+      await runInPage(tab.id, pressArrowRightInPage, [0]);
 
-      const next = await waitForMainImage(tab.id, minSize, main.signature, PAGE_CHANGE_TIMEOUT_MS);
+      let result = await waitForMainImage(tab.id, minSize, main.signature, PAGE_CHANGE_TIMEOUT_MS);
 
-      if (!next) {
+      // 完全沒有換圖：可能是按鍵時看圖程式還在播放動畫而忽略了按鍵，再按一次確認。
+      if (result.status === "no-change") {
+        await runInPage(tab.id, pressArrowRightInPage, [1]);
+        result = await waitForMainImage(tab.id, minSize, main.signature, PAGE_RETRY_TIMEOUT_MS);
+      }
+
+      if (result.status === "no-change") {
         endReason = "no-change";
         break;
       }
 
-      if (seen.has(next.signature)) {
+      if (seen.has(result.main.signature)) {
         endReason = "loop";
         break;
       }
 
-      main = next;
+      main = result.main;
     }
 
     const id = newId("pages");

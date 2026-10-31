@@ -947,7 +947,7 @@ export async function renderStitchGroups() {
 
     const mergeCheckbox = createPartCheckbox(part, index);
 
-    mergeLabel.append(mergeCheckbox, " 加入合併");
+    mergeLabel.append(mergeCheckbox, " 勾選此段（個別下載或合併）");
     card.appendChild(mergeLabel);
 
     const downloadButton = document.createElement("button");
@@ -1054,7 +1054,7 @@ function renderPartList() {
     const row = document.createElement("label");
     row.className = "selectRow";
     row.dataset.partRow = String(index);
-    row.title = "勾選＝加入合併";
+    row.title = "勾選後可個別下載或合併";
     row.append(
       createPartCheckbox(part, index),
       ` 第 ${index + 1} 段（${rect.width} × ${rect.height}px）`
@@ -1181,6 +1181,9 @@ export function refreshStitchControls() {
   dom.downloadAllGroupsButton.textContent = `下載全部段落（${state.stitchParts.length}）`;
   dom.downloadAllGroupsButton.disabled = busy || state.stitchParts.length === 0;
 
+  dom.downloadCheckedButton.textContent = `個別下載勾選的段落（${includedCount}）`;
+  dom.downloadCheckedButton.disabled = busy || includedCount === 0;
+
   dom.mergeDownloadButton.textContent = plan.overLimit
     ? `合併勾選的段落（${includedCount}，將分為 ${plan.chunks.length} 張）`
     : `合併勾選的段落（${includedCount}）`;
@@ -1249,12 +1252,12 @@ export function resetCuts() {
 export function initStitchMode(refreshControls) {
   dom.selectAllPartsButton.addEventListener("click", () => {
     setAllPartsIncluded(true);
-    setStatus(`已將全部 ${state.stitchParts.length} 段加入合併。`);
+    setStatus(`已勾選全部 ${state.stitchParts.length} 段。`);
   });
 
   dom.deselectAllPartsButton.addEventListener("click", () => {
     setAllPartsIncluded(false);
-    setStatus("已取消所有段落的「加入合併」。");
+    setStatus("已取消勾選所有段落。");
   });
 
   dom.addCutButton.addEventListener("click", () => {
@@ -1333,12 +1336,43 @@ export function initStitchMode(refreshControls) {
     }
   });
 
+  // 個別下載勾選的段落：每一段各自存成一張圖片。
+  dom.downloadCheckedButton.addEventListener("click", async () => {
+    const selected = includedParts();
+
+    if (selected.length === 0) {
+      notify("請先勾選要下載的段落，再按下載。", "error");
+      return;
+    }
+
+    state.busy = true;
+    refreshControls();
+
+    const result = await runDownload(() => downloadItems(
+      selected.map(({ part, number }) => ({
+        label: partLabel(number),
+        rects: partRect(part)
+      })),
+      (index, total) => setStatus(`正在儲存第 ${index + 1} ／ ${total} 段……`)
+    ));
+
+    state.busy = false;
+    refreshControls();
+
+    if (result) {
+      reportDownload(result, "段長圖", {
+        button: dom.downloadCheckedButton,
+        buttonText: refreshControls
+      });
+    }
+  });
+
   dom.mergeDownloadButton.addEventListener("click", async () => {
     const plan = planMerge();
     const { selected } = plan;
 
     if (selected.length === 0) {
-      notify("請先在段落中勾選「加入合併」，再按合併。", "error");
+      notify("請先勾選要合併的段落，再按合併。", "error");
       return;
     }
 

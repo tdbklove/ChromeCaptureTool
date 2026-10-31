@@ -118,18 +118,20 @@
         <div class="groupButtons">
           <button id="downloadAllGroupsButton" type="button" class="primary" disabled
             title="每一段輸出為一張獨立的長圖">下載全部段落（0）</button>
+          <button id="downloadCheckedButton" type="button" class="secondary" disabled
+            title="勾選的段落各自存成一張圖片（一次下載多張）">個別下載勾選的段落（0）</button>
           <button id="mergeDownloadButton" type="button" class="secondary" disabled
-            title="把勾選「加入合併」的段落依序接成一張長圖（移除區域已排除）">合併勾選的段落（0）</button>
+            title="把勾選的段落依序接成一張長圖（移除區域已排除）">合併勾選的段落（0）</button>
         </div>
         <p id="mergeWarning" class="mergeWarning" role="alert" hidden></p>
         <div class="groupButtons">
           <button id="selectAllPartsButton" type="button" class="secondary"
-            title="所有段落都加入合併">全選段落</button>
+            title="勾選所有段落">全選段落</button>
           <button id="deselectAllPartsButton" type="button" class="secondary"
-            title="所有段落都不加入合併">取消全選段落</button>
+            title="取消勾選所有段落">取消全選段落</button>
         </div>
         <p class="groupHint">
-          勾選要合併的段落（也可以在下方每一段的卡片上勾選「加入合併」），再按「合併勾選的段落」，即可只把需要的段落合併成一張長圖。
+          在下方清單（或每一段的卡片）勾選段落後，可按「個別下載勾選的段落」一次存成多張圖片，或按「合併勾選的段落」接成一張長圖。
         </p>
 
         <div id="partList" class="cutList"></div>
