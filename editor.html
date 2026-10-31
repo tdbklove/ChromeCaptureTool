@@ -6,7 +6,7 @@
   <title>圖片裁切工具</title>
   <link rel="icon" href="icons/icon-32.png">
   <link rel="stylesheet" href="editor.css">
-  <script src="editor.js" defer></script>
+  <script src="editor/main.js" type="module"></script>
 </head>
 <body>
   <header class="toolbar">
@@ -15,6 +15,8 @@
       <h1>圖片裁切工具</h1>
       <span id="modeBadge" class="badge">單張截圖</span>
     </div>
+    <button id="settingsButton" type="button" class="secondary"
+      title="設定下載位置、檔案分類與快捷鍵">下載設定</button>
   </header>
 
   <p id="status" class="statusBar" role="status" aria-live="polite">
@@ -40,11 +42,15 @@
 
       <p class="instruction previewHint">
         綠色框線為偵測到且已勾選的圖片，灰色為未勾選。在預覽區拖曳可以手動框出範圍；
-        拖曳框的邊線可以調整大小。長條截圖中，紅色區域為會被移除的範圍。
+        拖曳框的邊線可以調整大小。長條截圖中，紅色區域為會被移除的範圍，左右兩側的邊線可左右拖曳。
       </p>
 
       <div id="canvasContainer">
-        <canvas id="canvas"></canvas>
+        <!-- 底層為截圖本身，上層為標示圖層（偵測框、移除區域、選取框） -->
+        <div id="canvasStage">
+          <canvas id="canvas"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
       </div>
     </section>
 

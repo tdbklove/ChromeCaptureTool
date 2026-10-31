@@ -1,8 +1,29 @@
-const DB_NAME = "ScreenshotStitchDB";
-// 版本 2：舊版編輯頁可能在沒有資料表的情況下建立了版本 1 的資料庫，
-// 升級時會補建資料表。此版本號必須與 editor.js 的 STITCH_DB_VERSION 一致。
-const DB_VERSION = 2;
-const STORE_NAME = "frames";
+import {
+  EDITOR_PAGE,
+  MESSAGES,
+  MIN_MEDIA_SIZE,
+  STORAGE_KEYS
+} from "./lib/constants.js";
+
+import {
+  clearAllCaptures,
+  deleteCapture,
+  deleteFrames,
+  saveCapture,
+  saveFrame
+} from "./lib/db.js";
+
+import {
+  checkPageReadyInPage,
+  hideFixedElementsInPage,
+  prepareScrollTargetInPage,
+  readViewportStateInPage,
+  releaseScrollTargetInPage,
+  restoreFixedElementsInPage,
+  scanPageInPage,
+  scrollByInPage,
+  scrollToInPage
+} from "./lib/page-scripts.js";
 
 const SCROLL_RATIO = 0.8;
 const WAIT_AFTER_SCROLL_MS = 300;
@@ -17,382 +38,235 @@ const MAX_DEVICE_HEIGHT = 24000;
 const MIN_BATCH_FRAMES = 4;
 const MAX_BATCH_FRAMES = 20;
 
-const SESSION_KEY = "stitchSession";
+// 單張截圖：captureVisibleTab 每秒最多呼叫 2 次，重試前需要等待。
+const CAPTURE_RETRY_WAIT_MS = 600;
+const MAX_CAPTURE_ATTEMPTS = 3;
 
-let isStitching = false;
-
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = () => {
-      const db = request.result;
-
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, {
-          keyPath: "id"
-        });
-
-        store.createIndex("jobId", "jobId", {
-          unique: false
-        });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function saveFrame(frame) {
-  const db = await openDatabase();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-
-    transaction.objectStore(STORE_NAME).put(frame);
-
-    transaction.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-
-    transaction.onerror = () => {
-      db.close();
-      reject(transaction.error);
-    };
-
-    transaction.onabort = () => {
-      db.close();
-      reject(transaction.error);
-    };
-  });
-}
-
-async function deleteFrames(jobId) {
-  const db = await openDatabase();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const index = store.index("jobId");
-    const request = index.openCursor(IDBKeyRange.only(jobId));
-
-    request.onsuccess = () => {
-      const cursor = request.result;
-
-      if (cursor) {
-        cursor.delete();
-        cursor.continue();
-      }
-    };
-
-    transaction.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-
-    transaction.onerror = () => {
-      db.close();
-      reject(transaction.error);
-    };
-  });
-}
+// 同一時間只允許一項截圖工作，避免捲動與截圖互相干擾。
+let busyTask = null;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function newJobId(batchIndex) {
-  return `stitch_${Date.now()}_b${batchIndex}`;
+function newId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// ---- 以下函式會被序列化後注入目標網頁，必須完全自給自足 ----
-
-// 隱藏固定定位與吸附在視窗邊緣的 sticky 元素（visibility: hidden，保留版面）。
-// 原始樣式記錄在 window.__sccHidden，供還原使用。回傳隱藏的元素數量。
-function hideFixedElementsInPage() {
-  const leftover = window.__sccHidden || [];
-
-  for (const entry of leftover) {
-    entry.el.style.setProperty(
-      "visibility",
-      entry.value,
-      entry.priority
-    );
-  }
-
-  const vw = window.innerWidth;
-  const vh = document.documentElement.clientHeight || window.innerHeight;
-  const viewportArea = vw * vh;
-
-  const containsLargeMedia = (element) => {
-    const media = element.querySelectorAll("img, video, canvas");
-
-    for (const item of media) {
-      const rect = item.getBoundingClientRect();
-
-      if (rect.width * rect.height >= viewportArea * 0.4) {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const hidden = [];
-
-  for (const element of document.querySelectorAll("body *")) {
-    const style = window.getComputedStyle(element);
-
-    if (style.position !== "fixed" && style.position !== "sticky") {
-      continue;
-    }
-
-    if (style.visibility === "hidden") {
-      continue;
-    }
-
-    const rect = element.getBoundingClientRect();
-
-    if (rect.width === 0 || rect.height === 0) {
-      continue;
-    }
-
-    if (style.position === "sticky") {
-      const stuck = rect.top <= 1 || rect.bottom >= vh - 1;
-
-      if (!stuck) {
-        continue;
-      }
-    }
-
-    if (
-      rect.width * rect.height >= viewportArea * 0.5 &&
-      containsLargeMedia(element)
-    ) {
-      continue;
-    }
-
-    hidden.push({
-      el: element,
-      value: element.style.getPropertyValue("visibility"),
-      priority: element.style.getPropertyPriority("visibility")
-    });
-
-    element.style.setProperty("visibility", "hidden", "important");
-  }
-
-  window.__sccHidden = hidden;
-
-  return hidden.length;
+function editorUrl(params) {
+  return chrome.runtime.getURL(`${EDITOR_PAGE}?${new URLSearchParams(params)}`);
 }
 
-function restoreFixedElementsInPage() {
-  const hidden = window.__sccHidden || [];
-
-  for (const entry of hidden) {
-    entry.el.style.setProperty(
-      "visibility",
-      entry.value,
-      entry.priority
-    );
-  }
-
-  window.__sccHidden = [];
-
-  return hidden.length;
-}
-
-// 掃描目前畫面，回傳圖片與廣告區塊的整頁座標（CSS 像素），
-// 以及內容區域（不含捲軸）與裝置像素比例等尺寸資訊。
-function scanPageForStitch() {
-  const contentHeight =
-    document.documentElement.clientHeight || window.innerHeight;
-  const contentWidth =
-    document.documentElement.clientWidth || window.innerWidth;
-
-  const scrollX = window.scrollX;
-  const scrollY = window.scrollY;
-
-  const AD_PATTERN =
-    /(^|[^a-z])(ad|ads|advert|advertisement|advertising|sponsor|sponsored|banner|adsbygoogle|doubleclick|googlesyndication)([^a-z]|$)/i;
-
-  const VIDEO_PATTERN = /youtube|youtu\.be|vimeo|bilibili|player/i;
-
-  const isRendered = (element) => {
-    let node = element;
-
-    while (node && node.nodeType === Node.ELEMENT_NODE) {
-      const style = window.getComputedStyle(node);
-
-      if (style.display === "none" || Number(style.opacity) === 0) {
-        return false;
-      }
-
-      node = node.parentElement;
-    }
-
-    return window.getComputedStyle(element).visibility !== "hidden";
-  };
-
-  const toPage = (rect) => ({
-    top: rect.top + scrollY,
-    bottom: rect.bottom + scrollY,
-    left: rect.left + scrollX,
-    right: rect.right + scrollX
-  });
-
-  const images = [];
-
-  for (const img of document.images) {
-    if (
-      !isRendered(img) ||
-      !img.complete ||
-      img.naturalWidth < 40 ||
-      img.naturalHeight < 40
-    ) {
-      continue;
-    }
-
-    const rect = img.getBoundingClientRect();
-
-    if (rect.width < 40 || rect.height < 40) {
-      continue;
-    }
-
-    images.push({
-      ...toPage(rect),
-      src: img.currentSrc || img.src,
-      alt: img.alt || ""
-    });
-  }
-
-  const separators = [];
-
-  for (const element of document.querySelectorAll("iframe, ins, [id], [class]")) {
-    if (element.tagName === "IMG") {
-      continue;
-    }
-
-    const attributeText =
-      `${element.id || ""} ${element.getAttribute("class") || ""} ` +
-      `${element.getAttribute("name") || ""}`;
-
-    const sourceText =
-      element.tagName === "IFRAME" ? element.getAttribute("src") || "" : "";
-
-    const isVideoEmbed = VIDEO_PATTERN.test(sourceText);
-
-    const isAdLike =
-      element.classList.contains("adsbygoogle") ||
-      AD_PATTERN.test(attributeText) ||
-      AD_PATTERN.test(sourceText) ||
-      (element.tagName === "IFRAME" && !isVideoEmbed);
-
-    if (!isAdLike) {
-      continue;
-    }
-
-    if (window.getComputedStyle(element).position === "fixed") {
-      continue;
-    }
-
-    if (!isRendered(element)) {
-      continue;
-    }
-
-    const rect = element.getBoundingClientRect();
-
-    if (rect.width < 200 || rect.height < 50 || rect.height > contentHeight * 1.5) {
-      continue;
-    }
-
-    const box = toPage(rect);
-
-    separators.push({
-      top: box.top,
-      bottom: box.bottom
-    });
-  }
-
-  return {
-    scrollY,
-    viewportHeight: contentHeight,
-    contentWidth,
-    innerWidth: window.innerWidth,
-    innerHeight: window.innerHeight,
-    devicePixelRatio: window.devicePixelRatio || 1,
-    images,
-    separators
-  };
-}
-
-// 將目標頁面捲動到指定的整頁位置。
-function scrollToPageInPage(top) {
-  window.scrollTo({ top, behavior: "instant" });
-
-  return window.scrollY;
-}
-
-// 向下捲動一段距離，回傳捲動後的位置與是否已到底部。
-function scrollStepInPage(distance) {
-  const before = window.scrollY;
-
-  window.scrollTo({
-    top: before + distance,
-    behavior: "instant"
-  });
-
-  return window.scrollY;
-}
-
-// 檢查視窗附近的圖片是否都已載入完成。scope 為 "viewport" 時只看視窗附近的圖片，
-// 因為遠處的 lazy-load 圖片在捲動到之前本來就不會載入。
-function checkPageReadyInPage(scope) {
-  const vh = document.documentElement.clientHeight || window.innerHeight;
-  const margin = 300;
-
-  let pending = 0;
-
-  for (const img of document.images) {
-    const style = window.getComputedStyle(img);
-    const rect = img.getBoundingClientRect();
-
-    if (style.display === "none" || style.visibility === "hidden") {
-      continue;
-    }
-
-    if (rect.width < 2 || rect.height < 2) {
-      continue;
-    }
-
-    const nearViewport = rect.bottom > -margin && rect.top < vh + margin;
-
-    if (scope === "viewport" && !nearViewport) {
-      continue;
-    }
-
-    if (!img.complete) {
-      pending++;
-    }
-  }
-
-  return {
-    complete: document.readyState === "complete",
-    pending,
-    count: document.images.length
-  };
-}
-
-async function checkPageReady(tabId, scope) {
+async function runInPage(tabId, func, args = []) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
-    args: [scope],
-    func: checkPageReadyInPage
+    func,
+    args
   });
 
-  return results?.[0]?.result ?? { complete: false, pending: 1, count: -1 };
+  return results?.[0]?.result;
+}
+
+async function beginTask(name) {
+  if (busyTask) {
+    throw new Error(
+      busyTask === "stitch"
+        ? "長截圖正在進行中，請等待完成後再試。"
+        : "目前已有截圖工作正在執行。"
+    );
+  }
+
+  busyTask = name;
+}
+
+function endTask() {
+  busyTask = null;
+}
+
+// 擷取目前分頁的可見畫面，回傳 PNG Blob。
+async function captureTab(windowId) {
+  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+  const response = await fetch(dataUrl);
+
+  return response.blob();
+}
+
+// 確認目標分頁仍是該視窗的前景分頁。captureVisibleTab 只會拍攝前景分頁，
+// 使用者若在截圖途中切換分頁，會拍到別的網頁並被拼進長圖，因此必須中止。
+async function ensureTargetTabActive(tabId, windowId) {
+  let tab;
+
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (error) {
+    throw new Error("目標分頁已關閉，已停止擷取。");
+  }
+
+  if (!tab.active || tab.windowId !== windowId) {
+    throw new Error("目標分頁已不在前景（可能切換了分頁），已停止擷取。請切回原分頁後重新開始。");
+  }
+}
+
+// ---- 進度與錯誤提示 ----
+
+// 進度文字寫入 storage（彈出視窗與編輯頁會監聽並顯示），並同步顯示在工具列圖示上。
+async function setProgress(text, badge = "") {
+  try {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.progress]: { text, at: Date.now() }
+    });
+    await chrome.action.setBadgeBackgroundColor({ color: "#1a73e8" });
+    await chrome.action.setBadgeText({ text: badge });
+  } catch (error) {
+    console.warn("無法更新進度：", error);
+  }
+}
+
+// 用快捷鍵啟動時沒有彈出視窗可以顯示錯誤，改在工具列圖示上提示。
+async function showBadgeError(message) {
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: "#d93025" });
+    await chrome.action.setBadgeText({ text: "!" });
+    await chrome.action.setTitle({ title: `截圖失敗：${message}` });
+
+    setTimeout(async () => {
+      await chrome.action.setBadgeText({ text: "" });
+      await chrome.action.setTitle({ title: "截圖與裁切" });
+    }, 8000);
+  } catch (error) {
+    console.warn("無法顯示錯誤提示：", error);
+  }
+}
+
+// ---- 單張截圖 ----
+
+// 將截圖裁成網頁內容區域，去掉右側與底部的捲軸（Windows 常見）。
+async function cropToContent(blob, pageInfo) {
+  const bitmap = await createImageBitmap(blob);
+
+  try {
+    const scaleX = bitmap.width / pageInfo.innerWidth;
+    const scaleY = bitmap.height / pageInfo.innerHeight;
+
+    const width = Math.min(bitmap.width, Math.round(pageInfo.viewportWidth * scaleX));
+    const height = Math.min(bitmap.height, Math.round(pageInfo.viewportHeight * scaleY));
+
+    if (width === bitmap.width && height === bitmap.height) {
+      return blob;
+    }
+
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height, 0, 0, width, height);
+
+    return canvas.convertToBlob({ type: "image/png" });
+  } finally {
+    bitmap.close();
+  }
+}
+
+function sameViewportState(a, b) {
+  return (
+    a.scrollX === b.scrollX &&
+    a.scrollY === b.scrollY &&
+    a.innerWidth === b.innerWidth &&
+    a.innerHeight === b.innerHeight
+  );
+}
+
+async function scanVisible(tabId) {
+  try {
+    // 清除長截圖可能遺留的捲動區塊標記，單張截圖一律以整個視窗為範圍。
+    await runInPage(tabId, releaseScrollTargetInPage);
+
+    const pageInfo = await runInPage(tabId, scanPageInPage, [{
+      minSize: MIN_MEDIA_SIZE,
+      includeExtras: true,
+      visibleOnly: true,
+      includeSeparators: false
+    }]);
+
+    if (!pageInfo) {
+      throw new Error("無法取得網頁圖片資訊。");
+    }
+
+    return pageInfo;
+  } catch (error) {
+    console.error("無法在此頁面執行偵測：", error);
+    throw new Error(
+      "無法讀取此頁面，請確認目前分頁是允許擷取的網頁（瀏覽器內建頁面與擴充功能商店無法擷取）。"
+    );
+  }
+}
+
+// 偵測圖片位置後截圖，再確認截圖當下的捲動位置與偵測時相同。
+// 若網頁在兩者之間捲動或改變大小（偵測框會對不準），就重新偵測與截圖。
+async function captureVisible(tab) {
+  await beginTask("single");
+
+  try {
+    let pageInfo = null;
+    let rawBlob = null;
+    let aligned = false;
+
+    for (let attempt = 1; attempt <= MAX_CAPTURE_ATTEMPTS && !aligned; attempt++) {
+      if (attempt > 1) {
+        await wait(CAPTURE_RETRY_WAIT_MS);
+      }
+
+      pageInfo = await scanVisible(tab.id);
+      rawBlob = await captureTab(tab.windowId);
+
+      const after = await runInPage(tab.id, readViewportStateInPage);
+      aligned = Boolean(after) && sameViewportState(pageInfo, after);
+    }
+
+    const blob = await cropToContent(rawBlob, pageInfo);
+    const id = newId("capture");
+
+    await saveCapture({
+      id,
+      blob,
+      viewportWidth: pageInfo.viewportWidth,
+      viewportHeight: pageInfo.viewportHeight,
+      images: pageInfo.images.map((item) => ({
+        kind: item.kind,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        alt: item.alt,
+        sourceWidth: item.sourceWidth,
+        sourceHeight: item.sourceHeight
+      })),
+      aligned,
+      pageUrl: tab.url || "",
+      pageTitle: tab.title || "",
+      createdAt: Date.now()
+    });
+
+    const editorTab = await chrome.tabs.create({
+      url: editorUrl({ capture: id }),
+      index: tab.index + 1,
+      openerTabId: tab.id
+    });
+
+    // 記錄編輯頁與暫存的對應，編輯頁關閉時自動清除。
+    const stored = await chrome.storage.local.get(STORAGE_KEYS.captureTabs);
+    const captureTabs = stored[STORAGE_KEYS.captureTabs] || {};
+    captureTabs[editorTab.id] = id;
+    await chrome.storage.local.set({ [STORAGE_KEYS.captureTabs]: captureTabs });
+
+    return { aligned };
+  } finally {
+    endTask();
+  }
+}
+
+// ---- 長截圖 ----
+
+async function checkPageReady(tabId, scope) {
+  return (await runInPage(tabId, checkPageReadyInPage, [scope])) ??
+    { complete: false, pending: 1, count: -1 };
 }
 
 // 等待頁面穩定：連續數次檢查都沒有待載入的圖片，且圖片數量不再變動。
@@ -423,40 +297,12 @@ async function waitForReady(tabId, scope, timeoutMs, requiredStable) {
   return false;
 }
 
-// 進度文字寫入 storage，彈出視窗與編輯頁會監聽並顯示。
-async function setProgress(text) {
-  try {
-    await chrome.storage.local.set({
-      stitchProgress: { text, at: Date.now() }
-    });
-  } catch (error) {
-    console.warn("無法更新進度：", error);
-  }
-}
-
-async function hideFixedElements(tabId) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: hideFixedElementsInPage
-  });
-
-  return results?.[0]?.result ?? 0;
-}
-
-async function restoreFixedElements(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: restoreFixedElementsInPage
-  });
-}
-
-async function scanPage(tabId) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: scanPageForStitch
-  });
-
-  const scan = results?.[0]?.result;
+async function scanForStitch(tabId) {
+  const scan = await runInPage(tabId, scanPageInPage, [{
+    minSize: MIN_MEDIA_SIZE,
+    includeExtras: false,
+    includeSeparators: true
+  }]);
 
   if (!scan) {
     throw new Error("無法掃描網頁圖片與廣告位置。");
@@ -465,150 +311,100 @@ async function scanPage(tabId) {
   return scan;
 }
 
-async function scrollToPage(tabId, top) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    args: [top],
-    func: scrollToPageInPage
-  });
-
-  return results?.[0]?.result ?? 0;
-}
-
-// 確認目標分頁仍是該視窗的前景分頁。captureVisibleTab 只會拍攝前景分頁，
-// 使用者若在截圖途中切換分頁，會拍到別的網頁並被拼進長圖，因此必須中止。
-async function ensureTargetTabActive(tabId, windowId) {
-  let tab;
-
-  try {
-    tab = await chrome.tabs.get(tabId);
-  } catch (error) {
-    throw new Error("目標分頁已關閉，已停止擷取。");
-  }
-
-  if (!tab.active || tab.windowId !== windowId) {
-    throw new Error("目標分頁已不在前景（可能切換了分頁），已停止擷取。請切回原分頁後重新開始。");
-  }
-}
-
-async function scrollStep(tabId, distance) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    args: [distance],
-    func: scrollStepInPage
-  });
-
-  return results?.[0]?.result ?? 0;
-}
-
 // 擷取一批截圖。每批是一個獨立的工作（jobId），最多 maxFrames 段。
-// 若 startY 有值，會先捲動到該整頁位置再開始。
+// 若 startY 有值，會先捲動到該位置（捲動目標座標）再開始。
 async function captureBatch({ tabId, windowId, jobId, startY }) {
-  if (isStitching) {
-    throw new Error("目前已有截圖工作正在執行。");
-  }
-
-  isStitching = true;
-
-  let hidingStarted = false;
+  let pageTouched = false;
   let loadTimeouts = 0;
+  let hiddenCount = 0;
 
   try {
+    pageTouched = true;
+    const target = await runInPage(tabId, prepareScrollTargetInPage);
+
     if (startY != null) {
-      await scrollToPage(tabId, startY);
+      await runInPage(tabId, scrollToInPage, [startY]);
       await wait(WAIT_AFTER_SCROLL_MS);
     }
 
-    await setProgress("正在等待頁面與圖片載入完成，請勿操作網頁，完成後會自動開始截圖……");
+    await setProgress("正在等待頁面與圖片載入完成，請勿操作網頁，完成後會自動開始截圖……", "…");
 
-    const initiallyReady = await waitForReady(
-      tabId,
-      "viewport",
-      INITIAL_READY_TIMEOUT_MS,
-      3
-    );
+    const initiallyReady = await waitForReady(tabId, "viewport", INITIAL_READY_TIMEOUT_MS, 3);
 
     if (!initiallyReady) {
       loadTimeouts++;
     }
 
-    // 先掃描一次，取得視窗高度與裝置像素比例，據以決定步距與批次上限。
-    const probe = await scanPage(tabId);
-    const viewportHeight = probe.viewportHeight;
+    // 先掃描一次，取得可見高度與裝置像素比例，據以決定步距與批次上限。
+    const probe = await scanForStitch(tabId);
+    const visibleHeight = probe.clip.height;
 
-    if (!viewportHeight || viewportHeight <= 0) {
+    if (!visibleHeight || visibleHeight <= 0) {
       throw new Error("無法取得網頁可視高度。");
     }
 
-    const step = Math.max(1, Math.floor(viewportHeight * SCROLL_RATIO));
+    const step = Math.max(1, Math.floor(visibleHeight * SCROLL_RATIO));
     const dpr = probe.devicePixelRatio || 1;
 
     const maxFrames = Math.min(
       MAX_BATCH_FRAMES,
-      Math.max(
-        MIN_BATCH_FRAMES,
-        Math.floor(MAX_DEVICE_HEIGHT / (step * dpr))
-      )
+      Math.max(MIN_BATCH_FRAMES, Math.floor(MAX_DEVICE_HEIGHT / (step * dpr)))
     );
-
-    hidingStarted = true;
-    const hiddenCount = await hideFixedElements(tabId);
 
     let frameCount = 0;
     let done = false;
 
     for (let i = 0; i < maxFrames; i++) {
       await setProgress(
-        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿操作網頁……`
+        `正在擷取第 ${i + 1} 段（本批最多 ${maxFrames} 段），請勿操作網頁……`,
+        String(i + 1)
       );
 
       // 每一段都等待視窗附近的圖片載入完成，才拍攝。
-      const frameReady = await waitForReady(
-        tabId,
-        "viewport",
-        FRAME_READY_TIMEOUT_MS,
-        2
-      );
+      const frameReady = await waitForReady(tabId, "viewport", FRAME_READY_TIMEOUT_MS, 2);
 
       if (!frameReady) {
         loadTimeouts++;
       }
 
+      // 每一段都重新隱藏固定元素，途中才出現的浮動元素（Cookie 提示、客服視窗）也會被隱藏。
+      hiddenCount = Math.max(hiddenCount, await runInPage(tabId, hideFixedElementsInPage) ?? 0);
+
       await wait(WAIT_AFTER_SCROLL_MS);
 
-      const scan = await scanPage(tabId);
+      const scan = await scanForStitch(tabId);
 
       // 拍攝前後都檢查，避免在檢查與拍攝之間切換分頁。
       await ensureTargetTabActive(tabId, windowId);
-
-      const screenshot = await chrome.tabs.captureVisibleTab(
-        windowId,
-        { format: "png" }
-      );
-
+      const blob = await captureTab(windowId);
       await ensureTargetTabActive(tabId, windowId);
 
       await saveFrame({
         id: `${jobId}_${String(frameCount).padStart(3, "0")}`,
         jobId,
         index: frameCount,
-        dataUrl: screenshot,
-        scrollY: scan.scrollY,
-        viewportHeight: scan.viewportHeight,
+        blob,
+        scrollTop: scan.scrollTop,
+        clip: scan.clip,
         innerWidth: scan.innerWidth,
         innerHeight: scan.innerHeight,
-        contentWidth: scan.contentWidth,
         layout: {
-          images: scan.images,
+          images: scan.images.map((item) => ({
+            top: item.top,
+            bottom: item.bottom,
+            left: item.left,
+            right: item.right,
+            src: item.src
+          })),
           separators: scan.separators
         }
       });
 
       frameCount++;
 
-      const nextY = await scrollStep(tabId, step);
+      const nextTop = await runInPage(tabId, scrollByInPage, [step]);
 
-      if (nextY <= scan.scrollY) {
+      if (nextTop == null || nextTop <= scan.scrollTop) {
         done = true;
         break;
       }
@@ -618,7 +414,7 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
       throw new Error("沒有成功擷取任何畫面。");
     }
 
-    return { frameCount, done, hiddenCount, loadTimeouts };
+    return { frameCount, done, hiddenCount, loadTimeouts, scrollMode: target?.mode || "window" };
   } catch (error) {
     try {
       await deleteFrames(jobId);
@@ -628,154 +424,149 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
 
     throw error;
   } finally {
-    if (hidingStarted) {
+    if (pageTouched) {
       try {
-        await restoreFixedElements(tabId);
+        await runInPage(tabId, restoreFixedElementsInPage);
+        await runInPage(tabId, releaseScrollTargetInPage);
       } catch (restoreError) {
-        console.error("還原固定元素失敗：", restoreError);
+        console.error("還原網頁狀態失敗：", restoreError);
       }
     }
 
-    isStitching = false;
+    await setProgress("", "");
   }
 }
 
 async function getSession() {
-  const result = await chrome.storage.local.get(SESSION_KEY);
-  return result[SESSION_KEY] || null;
+  const result = await chrome.storage.local.get(STORAGE_KEYS.session);
+  return result[STORAGE_KEYS.session] || null;
 }
 
-// 開啟或重新整理編輯頁，回傳編輯頁的分頁 id。
-async function openOrReloadEditor(session) {
-  const url = chrome.runtime.getURL("editor.html");
+// 開啟或更新編輯頁，回傳編輯頁的分頁 id。
+async function openOrUpdateEditor(session, sourceTab) {
+  const url = editorUrl({ job: session.jobId });
 
   if (session.editorTabId != null) {
     try {
-      await chrome.tabs.update(session.editorTabId, { active: true });
-      await chrome.tabs.reload(session.editorTabId);
+      await chrome.tabs.update(session.editorTabId, { url, active: true });
       return session.editorTabId;
     } catch (error) {
       console.warn("原編輯頁已不存在，改為開新頁：", error);
     }
   }
 
-  const tab = await chrome.tabs.create({ url });
+  const tab = await chrome.tabs.create({
+    url,
+    ...(sourceTab ? { index: sourceTab.index + 1, openerTabId: sourceTab.id } : {})
+  });
+
   return tab.id;
 }
 
 // 第一批：從目前捲動位置開始。
 async function startStitch(tabId, windowId) {
-  if (isStitching) {
-    throw new Error("目前已有一項長圖擷取工作正在執行。");
-  }
+  await beginTask("stitch");
 
-  const tab = await chrome.tabs.get(tabId);
+  try {
+    const tab = await chrome.tabs.get(tabId);
 
-  if (tab.windowId !== windowId || !tab.active) {
-    throw new Error("請先切回要擷取的目標分頁。");
-  }
-
-  // 清除上一個未完成的工作。
-  const previous = await getSession();
-
-  if (previous?.jobId) {
-    try {
-      await deleteFrames(previous.jobId);
-    } catch (error) {
-      console.error("清除舊工作失敗：", error);
+    if (tab.windowId !== windowId || !tab.active) {
+      throw new Error("請先切回要擷取的目標分頁。");
     }
+
+    const jobId = newId("stitch_b1");
+    const batch = await captureBatch({ tabId, windowId, jobId, startY: null });
+
+    // 新的長截圖成功後，才清除上一個工作階段的暫存（同一時間只保留一個）。
+    const previous = await getSession();
+
+    if (previous?.jobId) {
+      try {
+        await deleteFrames(previous.jobId);
+      } catch (error) {
+        console.error("清除舊工作失敗：", error);
+      }
+    }
+
+    const session = {
+      tabId,
+      windowId,
+      jobId,
+      batchIndex: 1,
+      done: batch.done,
+      hiddenCount: batch.hiddenCount,
+      loadTimeouts: batch.loadTimeouts,
+      scrollMode: batch.scrollMode,
+      nextStartY: null,
+      editorTabId: null,
+      pageUrl: tab.url || "",
+      pageTitle: tab.title || "",
+      startedAt: Date.now()
+    };
+
+    session.editorTabId = await openOrUpdateEditor(session, tab);
+    await chrome.storage.local.set({ [STORAGE_KEYS.session]: session });
+  } finally {
+    endTask();
   }
-
-  const jobId = newJobId(1);
-
-  const batch = await captureBatch({
-    tabId,
-    windowId,
-    jobId,
-    startY: null
-  });
-
-  const session = {
-    tabId,
-    windowId,
-    jobId,
-    batchIndex: 1,
-    done: batch.done,
-    hiddenCount: batch.hiddenCount,
-    loadTimeouts: batch.loadTimeouts,
-    nextStartY: null,
-    editorTabId: null
-  };
-
-  await chrome.storage.local.set({
-    [SESSION_KEY]: session,
-    pendingStitchJob: jobId
-  });
-
-  session.editorTabId = await openOrReloadEditor(session);
-
-  await chrome.storage.local.set({ [SESSION_KEY]: session });
 }
 
 // 繼續下一批：從編輯頁決定的接續位置開始。
-async function continueStitch() {
-  if (isStitching) {
-    throw new Error("目前已有截圖工作正在執行。");
-  }
+async function continueStitch(jobId, nextStartY) {
+  await beginTask("stitch");
 
-  const session = await getSession();
-
-  if (!session || session.done || session.nextStartY == null) {
-    throw new Error("目前沒有可繼續的截圖位置。");
-  }
-
-  // 切回目標分頁，確保可以擷取可見畫面。
-  await chrome.windows.update(session.windowId, { focused: true });
-  await chrome.tabs.update(session.tabId, { active: true });
-
-  const batchIndex = session.batchIndex + 1;
-  const jobId = newJobId(batchIndex);
-
-  const batch = await captureBatch({
-    tabId: session.tabId,
-    windowId: session.windowId,
-    jobId,
-    startY: session.nextStartY
-  });
-
-  // 新一批成功後才刪除上一批的暫存。
   try {
-    await deleteFrames(session.jobId);
-  } catch (error) {
-    console.error("清除上一批暫存失敗：", error);
+    const session = await getSession();
+
+    if (!session || session.jobId !== jobId) {
+      throw new Error("這個長截圖已經結束或被新的長截圖取代，無法繼續。");
+    }
+
+    if (session.done || nextStartY == null) {
+      throw new Error("目前沒有可繼續的截圖位置。");
+    }
+
+    // 切回目標分頁，確保可以擷取可見畫面。
+    await chrome.windows.update(session.windowId, { focused: true });
+    await chrome.tabs.update(session.tabId, { active: true });
+
+    const batchIndex = session.batchIndex + 1;
+    const nextJobId = newId(`stitch_b${batchIndex}`);
+
+    const batch = await captureBatch({
+      tabId: session.tabId,
+      windowId: session.windowId,
+      jobId: nextJobId,
+      startY: nextStartY
+    });
+
+    // 新一批成功後才刪除上一批的暫存。
+    try {
+      await deleteFrames(session.jobId);
+    } catch (error) {
+      console.error("清除上一批暫存失敗：", error);
+    }
+
+    const updated = {
+      ...session,
+      jobId: nextJobId,
+      batchIndex,
+      done: batch.done,
+      hiddenCount: batch.hiddenCount,
+      loadTimeouts: batch.loadTimeouts,
+      scrollMode: batch.scrollMode,
+      nextStartY: null
+    };
+
+    updated.editorTabId = await openOrUpdateEditor(updated, null);
+    await chrome.storage.local.set({ [STORAGE_KEYS.session]: updated });
+  } finally {
+    endTask();
   }
-
-  const updated = {
-    ...session,
-    jobId,
-    batchIndex,
-    done: batch.done,
-    hiddenCount: batch.hiddenCount,
-    loadTimeouts: batch.loadTimeouts,
-    nextStartY: null
-  };
-
-  await chrome.storage.local.set({
-    [SESSION_KEY]: updated,
-    pendingStitchJob: jobId
-  });
-
-  updated.editorTabId = await openOrReloadEditor(updated);
-
-  await chrome.storage.local.set({ [SESSION_KEY]: updated });
 }
 
-// 清除目前的長圖工作階段（含暫存截圖），讓單張擷取不會被舊的長圖結果蓋過。
+// 清除長截圖工作階段與暫存截圖。
 async function discardStitchSession() {
-  if (isStitching) {
-    throw new Error("長圖擷取進行中，無法切換為單張截圖，請等待完成。");
-  }
-
   const session = await getSession();
 
   if (session?.jobId) {
@@ -786,52 +577,138 @@ async function discardStitchSession() {
     }
   }
 
+  await chrome.storage.local.remove([STORAGE_KEYS.session, STORAGE_KEYS.progress]);
+}
+
+// 編輯頁按「結束並清除暫存」：只清除該頁對應的工作階段，不影響之後開始的新長截圖。
+async function finishStitch(jobId) {
+  if (busyTask === "stitch") {
+    throw new Error("長截圖正在進行中，請等待完成。");
+  }
+
+  const session = await getSession();
+
+  if (session?.jobId === jobId) {
+    await discardStitchSession();
+  }
+}
+
+// ---- 暫存自動清除 ----
+
+// 編輯頁被關閉時，清除它使用的暫存截圖。
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  try {
+    const stored = await chrome.storage.local.get([
+      STORAGE_KEYS.session,
+      STORAGE_KEYS.captureTabs
+    ]);
+
+    const session = stored[STORAGE_KEYS.session];
+
+    // 長截圖進行中時，編輯頁會在完成後重新開啟，因此不清除。
+    if (session && session.editorTabId === tabId && busyTask !== "stitch") {
+      await discardStitchSession();
+    }
+
+    const captureTabs = stored[STORAGE_KEYS.captureTabs] || {};
+    const captureId = captureTabs[tabId];
+
+    if (captureId) {
+      await deleteCapture(captureId);
+      delete captureTabs[tabId];
+      await chrome.storage.local.set({ [STORAGE_KEYS.captureTabs]: captureTabs });
+    }
+  } catch (error) {
+    console.error("清除暫存失敗：", error);
+  }
+});
+
+// 瀏覽器重新啟動時，之前的編輯頁都已關閉，清除所有遺留的暫存。
+async function clearLeftovers() {
+  try {
+    await clearAllCaptures();
+  } catch (error) {
+    console.error("清除遺留暫存失敗：", error);
+  }
+
   await chrome.storage.local.remove([
-    SESSION_KEY,
-    "pendingStitchJob",
-    "stitchProgress"
+    STORAGE_KEYS.session,
+    STORAGE_KEYS.progress,
+    STORAGE_KEYS.captureTabs,
+    // 舊版本使用的鍵值。
+    "pendingCapture",
+    "pendingStitchJob"
   ]);
 }
 
+chrome.runtime.onStartup.addListener(clearLeftovers);
+
+chrome.runtime.onInstalled.addListener((details) => {
+  // 更新後暫存格式可能不同，清除舊版本的暫存。
+  if (details.reason === "install" || details.reason === "update") {
+    clearLeftovers();
+  }
+});
+
+// ---- 快捷鍵 ----
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  try {
+    if (!tab?.id || tab.windowId == null) {
+      throw new Error("找不到目前的分頁。");
+    }
+
+    if (command === "capture-visible") {
+      await captureVisible(tab);
+    } else if (command === "capture-full") {
+      await startStitch(tab.id, tab.windowId);
+    }
+  } catch (error) {
+    console.error("快捷鍵截圖失敗：", error);
+    await showBadgeError(error.message || "截圖失敗。");
+  }
+});
+
+// ---- 訊息 ----
+
+function respond(promise, sendResponse, fallbackMessage) {
+  promise
+    .then((result) => sendResponse({ ok: true, ...(result || {}) }))
+    .catch((error) => {
+      console.error(fallbackMessage, error);
+      sendResponse({ ok: false, error: error.message || fallbackMessage });
+    });
+
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "DISCARD_STITCH") {
-    discardStitchSession()
-      .then(() => sendResponse({ ok: true }))
-      .catch((error) => {
-        sendResponse({
-          ok: false,
-          error: error.message || "無法清除長圖暫存。"
-        });
-      });
+  switch (message?.type) {
+    case MESSAGES.captureVisible:
+      return respond(
+        chrome.tabs.get(message.tabId).then(captureVisible),
+        sendResponse,
+        "截圖失敗。"
+      );
 
-    return true;
-  }
+    case MESSAGES.startStitch:
+      return respond(
+        startStitch(message.tabId, message.windowId),
+        sendResponse,
+        "長圖擷取失敗。"
+      );
 
-  if (message?.type === "START_STITCH") {
-    startStitch(message.tabId, message.windowId)
-      .then(() => sendResponse({ ok: true }))
-      .catch((error) => {
-        console.error("長圖擷取失敗：", error);
-        sendResponse({
-          ok: false,
-          error: error.message || "長圖擷取失敗。"
-        });
-      });
+    case MESSAGES.continueStitch:
+      return respond(
+        continueStitch(message.jobId, message.nextStartY),
+        sendResponse,
+        "繼續截圖失敗。"
+      );
 
-    return true;
-  }
+    case MESSAGES.finishStitch:
+      return respond(finishStitch(message.jobId), sendResponse, "清除暫存失敗。");
 
-  if (message?.type === "CONTINUE_STITCH") {
-    continueStitch()
-      .then(() => sendResponse({ ok: true }))
-      .catch((error) => {
-        console.error("繼續截圖失敗：", error);
-        sendResponse({
-          ok: false,
-          error: error.message || "繼續截圖失敗。"
-        });
-      });
-
-    return true;
+    default:
+      return false;
   }
 });

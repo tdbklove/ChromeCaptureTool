@@ -125,13 +125,33 @@ button.secondary:hover:not(:disabled) {
   border-color: transparent;
 }
 
-/* 需要再次確認的危險操作（例如清除未完成的長截圖） */
-button.primary.danger {
-  background: #d93025;
+/* 按鈕上的快捷鍵提示 */
+button kbd {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.8;
+  border: 1px solid currentColor;
+  border-radius: 4px;
 }
 
-button.primary.danger:hover:not(:disabled) {
-  background: #b3261e;
+/* 文字連結樣式的按鈕 */
+button.link {
+  width: auto;
+  margin: 8px 0 0;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+button.link:hover {
+  text-decoration: underline;
 }
 
 button:focus-visible {

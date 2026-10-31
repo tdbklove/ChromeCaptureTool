@@ -250,13 +250,29 @@ section {
   justify-content: center;
 }
 
+#canvasStage {
+  position: relative;
+  max-width: 100%;
+  background: var(--surface);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
+}
+
 #canvas {
   display: block;
   max-width: 100%;
   height: auto;
-  background: var(--surface);
   border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
+}
+
+/* 標示圖層：與截圖完全重疊，負責接收滑鼠操作 */
+#overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 /* ---------- 右側：結果面板 ---------- */
