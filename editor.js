@@ -73,6 +73,10 @@ const CUSTOM_CUT_COLOR = "rgba(109, 40, 217, 0.35)";
 let previewUrls = [];
 let stitchedObjectUrl = null;
 
+// 結果清單的產生是非同步的（每張預覽都要等待圖片產生）。
+// 每次重新產生都遞增版本編號，舊的產生流程發現版本已過期就停止，避免卡片重複或錯亂。
+let renderGeneration = 0;
+
 const DETECTED_COLOR = "#00a86b";
 const UNSELECTED_COLOR = "#9ca3af";
 const CUT_COLOR = "rgba(220, 38, 38, 0.35)";
@@ -686,7 +690,10 @@ async function loadScreenshot() {
 
           status.textContent =
             `截圖尺寸：${canvas.width} × ${canvas.height}；` +
-            `偵測到 ${detectedImages.length} 張圖片。`;
+            `偵測到 ${detectedImages.length} 張圖片。` +
+            (capture.aligned === false
+              ? "注意：網頁在截圖時持續捲動，偵測框可能有些偏移，請確認後再下載。"
+              : "");
         }
 
         saveButton.disabled = false;
@@ -1105,6 +1112,8 @@ function revokePreviewUrls() {
 // ---- 單張模式 ----
 
 async function renderResults() {
+  const generation = ++renderGeneration;
+
   revokePreviewUrls();
   resultsContainer.replaceChildren();
 
@@ -1171,11 +1180,16 @@ async function renderResults() {
 
     try {
       const blob = await cropImage(item);
+
+      if (generation !== renderGeneration) return;
+
       const url = URL.createObjectURL(blob);
 
       previewUrls.push(url);
       preview.src = url;
     } catch (error) {
+      if (generation !== renderGeneration) return;
+
       console.error("預覽產生失敗：", error);
       preview.alt = "無法產生預覽";
     }
@@ -1263,6 +1277,8 @@ function toggleGap(gapId) {
 }
 
 async function renderStitchGroups() {
+  const generation = ++renderGeneration;
+
   revokePreviewUrls();
   resultsContainer.replaceChildren();
   cutListContainer.replaceChildren();
@@ -1411,11 +1427,16 @@ async function renderStitchGroups() {
 
     try {
       const blob = await cropImage(rect);
+
+      if (generation !== renderGeneration) return;
+
       const url = URL.createObjectURL(blob);
 
       previewUrls.push(url);
       preview.src = url;
     } catch (error) {
+      if (generation !== renderGeneration) return;
+
       console.error("預覽產生失敗：", error);
       preview.alt = "無法產生預覽";
     }
@@ -2342,11 +2363,29 @@ window.addEventListener("pagehide", () => {
 // ---- IndexedDB ----
 
 const STITCH_DB_NAME = "ScreenshotStitchDB";
+// 必須與 background.js 的 DB_VERSION 一致，否則較低版本的一方會無法開啟資料庫。
+const STITCH_DB_VERSION = 2;
 const STITCH_STORE_NAME = "frames";
 
 function openStitchDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(STITCH_DB_NAME, 1);
+    const request = indexedDB.open(STITCH_DB_NAME, STITCH_DB_VERSION);
+
+    // 編輯頁也可能比背景程式先建立資料庫，因此同樣要建立資料表，
+    // 否則資料庫會在沒有資料表的狀態下被建立，之後每次讀寫都會失敗。
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(STITCH_STORE_NAME)) {
+        const store = db.createObjectStore(STITCH_STORE_NAME, {
+          keyPath: "id"
+        });
+
+        store.createIndex("jobId", "jobId", {
+          unique: false
+        });
+      }
+    };
 
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);

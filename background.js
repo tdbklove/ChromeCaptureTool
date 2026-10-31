@@ -1,5 +1,7 @@
 const DB_NAME = "ScreenshotStitchDB";
-const DB_VERSION = 1;
+// 版本 2：舊版編輯頁可能在沒有資料表的情況下建立了版本 1 的資料庫，
+// 升級時會補建資料表。此版本號必須與 editor.js 的 STITCH_DB_VERSION 一致。
+const DB_VERSION = 2;
 const STORE_NAME = "frames";
 
 const SCROLL_RATIO = 0.8;
@@ -473,6 +475,22 @@ async function scrollToPage(tabId, top) {
   return results?.[0]?.result ?? 0;
 }
 
+// 確認目標分頁仍是該視窗的前景分頁。captureVisibleTab 只會拍攝前景分頁，
+// 使用者若在截圖途中切換分頁，會拍到別的網頁並被拼進長圖，因此必須中止。
+async function ensureTargetTabActive(tabId, windowId) {
+  let tab;
+
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (error) {
+    throw new Error("目標分頁已關閉，已停止擷取。");
+  }
+
+  if (!tab.active || tab.windowId !== windowId) {
+    throw new Error("目標分頁已不在前景（可能切換了分頁），已停止擷取。請切回原分頁後重新開始。");
+  }
+}
+
 async function scrollStep(tabId, distance) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
@@ -560,10 +578,15 @@ async function captureBatch({ tabId, windowId, jobId, startY }) {
 
       const scan = await scanPage(tabId);
 
+      // 拍攝前後都檢查，避免在檢查與拍攝之間切換分頁。
+      await ensureTargetTabActive(tabId, windowId);
+
       const screenshot = await chrome.tabs.captureVisibleTab(
         windowId,
         { format: "png" }
       );
+
+      await ensureTargetTabActive(tabId, windowId);
 
       await saveFrame({
         id: `${jobId}_${String(frameCount).padStart(3, "0")}`,

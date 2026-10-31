@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "My Screenshot Cropper",
-  "version": "1.12.2",
+  "version": "1.12.3",
   "description": "截圖、圖片偵測、自動捲動與長圖拼接。",
   "icons": {
     "16": "icons/icon-16.png",

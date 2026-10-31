@@ -125,6 +125,15 @@ button.secondary:hover:not(:disabled) {
   border-color: transparent;
 }
 
+/* 需要再次確認的危險操作（例如清除未完成的長截圖） */
+button.primary.danger {
+  background: #d93025;
+}
+
+button.primary.danger:hover:not(:disabled) {
+  background: #b3261e;
+}
+
 button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
