@@ -144,3 +144,7 @@ icons/                圖示
 ## 授權
 
 本專案以 [MIT License](LICENSE) 授權。
+
+## 開發
+
+本專案由 [tdbklove](https://github.com/tdbklove) 規劃與測試，程式由 [Claude Code](https://claude.com/claude-code) 協助開發。
